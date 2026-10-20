@@ -1,0 +1,270 @@
+/**
+ * Review runner: `pnpm pr-review`, the start of a Review run for a pull
+ * request, on the developer's machine. This is everything up to the
+ * Reviewers, which are not run yet.
+ *
+ * CLI:
+ *
+ *   node scripts/pr-review/run.ts [--pr <number>] [--max-lines <number>] [--dry-run]
+ *
+ *   - The pull request is the open one of the current branch (looked up with
+ *     `gh`, as the developer), or `--pr <number>`. Its base branch and head
+ *     SHA come from GitHub. The pushed head SHA is reviewed, never the working
+ *     tree.
+ *   - `--max-lines` raises the size limit (default 3000 changed lines, added
+ *     plus deleted, after the path filters in config.ts). A bigger change
+ *     stops the run; it is never truncated.
+ *   - `--dry-run` prints what would be reviewed. Posting does not exist yet,
+ *     so for now it only changes the final message and skips the credentials.
+ *
+ * Steps of a run, each named in the failure message: Resolve PR, Credentials
+ * (not on a dry run), Fetch, Merge-base, Worktree, Diff, Size check and Token
+ * (not on a dry run). The worktree of the head SHA is removed afterwards, also
+ * when a step fails.
+ *
+ * Credentials: PR_REVIEW_APP_ID and PR_REVIEW_APP_PRIVATE_KEY are read from
+ * `.env.local` (credentials.ts) only on a real run. A dry run neither reads
+ * them nor calls the GitHub App endpoints, so it needs no setup and does only
+ * reads. A real run mints the one-hour installation token late, after the
+ * change is prepared and the size limit passed, so that a run that stops early
+ * never asks GitHub for a token, and mints it once. The token lives in memory:
+ * it is never stored or logged, child processes (`git`, `gh`) get a scrubbed
+ * environment, and every message is redacted of the key and the token before
+ * it is shown.
+ */
+
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { parseCliArgs, USAGE } from "./args.ts";
+import { readCredentials, secretsOf, type Credentials } from "./credentials.ts";
+import {
+  checkSize,
+  diffPullRequest,
+  fetchPullRequest,
+  findMergeBase,
+  withWorktree,
+  type DiffSummary,
+  type Git,
+} from "./pull-request-diff.ts";
+import { defaultExec, StepError, type Exec } from "./exec.ts";
+import {
+  createGitHubClient,
+  resolvePullRequest,
+  type GitHubClient,
+  type PullRequest,
+} from "./github.ts";
+import { mintToken } from "./token.ts";
+
+export interface RunOptions {
+  /** The pull request number; undefined means the current branch's. */
+  pr?: number;
+  /** The current branch, empty when HEAD is detached. */
+  branch: string;
+  dryRun: boolean;
+  maxLines: number;
+  /** `.env.local` candidates, the first that exists is read. */
+  credentialFiles: string[];
+}
+
+/** What a Review run has prepared, handed to the Reviewers. */
+export interface PreparedReview {
+  pr: PullRequest;
+  mergeBase: string;
+  diff: DiffSummary;
+  /** Absolute path of the worktree of the head SHA; removed after the run. */
+  worktree: string;
+  /** Installation token of the Review bot; null on a dry run. */
+  token: string | null;
+}
+
+export interface RunDeps {
+  git: Git;
+  client: GitHubClient;
+  log: (message: string) => void;
+  /** Milliseconds since the epoch. */
+  now: () => number;
+  /** Where worktrees are created. Default: the OS temp folder. */
+  tmpRoot?: string;
+  /** Runs the Reviewers and posts. Not implemented yet. */
+  review?: (prepared: PreparedReview) => Promise<void>;
+}
+
+export type Outcome =
+  | { kind: "prepared"; pr: number; files: number; changedLines: number }
+  | { kind: "dry-run"; pr: number; files: number; changedLines: number }
+  | { kind: "empty"; pr: number };
+
+/** Replaces each secret in a message. */
+export function redact(message: string, secrets: string[]): string {
+  let out = message;
+  // Longest first, so a whole key goes before its lines.
+  for (const secret of [...secrets].sort((a, b) => b.length - a.length)) {
+    if (secret) out = out.split(secret).join("[redacted]");
+  }
+  return out;
+}
+
+function describeDiff(summary: DiffSummary): string[] {
+  return summary.files.map(
+    (file) => `  ${file.path}  +${file.added} -${file.deleted}`,
+  );
+}
+
+/**
+ * Prepares a Review run for a pull request.
+ * @throws A `StepError` (message: the step, then the reason) when a step
+ *   fails. Its message never holds the private key or the token.
+ */
+export async function runReview(
+  options: RunOptions,
+  deps: RunDeps,
+): Promise<Outcome> {
+  const { log } = deps;
+  const secrets: string[] = [];
+  const step = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
+    try {
+      return await fn();
+    } catch (error) {
+      throw new StepError(name, error);
+    }
+  };
+
+  try {
+    const pr = await step("Resolve PR", () =>
+      resolvePullRequest(deps.client, {
+        number: options.pr,
+        branch: options.branch,
+      }),
+    );
+    log(`Pull request #${pr.number}: ${pr.title}`);
+
+    let credentials: Credentials | null = null;
+    if (!options.dryRun) {
+      credentials = await step("Credentials", async () =>
+        readCredentials(options.credentialFiles),
+      );
+      secrets.push(...secretsOf(credentials));
+    }
+
+    await step("Fetch", () => fetchPullRequest(deps.git, pr));
+    const mergeBase = await step("Merge-base", () =>
+      findMergeBase(deps.git, pr),
+    );
+
+    try {
+      return await withWorktree(
+        deps.git,
+        pr.headSha,
+        async ({ dir }) => {
+          const diff = await step("Diff", () =>
+            diffPullRequest(deps.git, dir, mergeBase, pr.headSha),
+          );
+          await step("Size check", async () =>
+            checkSize(diff, options.maxLines),
+          );
+          log(`Base: ${pr.baseRef} (merge-base ${mergeBase})`);
+          log(`Head SHA: ${pr.headSha}`);
+          log(
+            `Files: ${diff.files.length} (${diff.changedLines} changed lines${diff.ignoredFiles ? `, ${diff.ignoredFiles} ignored by the path filters` : ""})`,
+          );
+          for (const line of describeDiff(diff)) log(line);
+
+          if (diff.files.length === 0) {
+            log("Nothing to review.");
+            return { kind: "empty", pr: pr.number } as const;
+          }
+          const outcome = {
+            pr: pr.number,
+            files: diff.files.length,
+            changedLines: diff.changedLines,
+          };
+          if (options.dryRun || !credentials) {
+            log("Dry run: nothing was reviewed or posted.");
+            return { kind: "dry-run", ...outcome } as const;
+          }
+
+          const token = await step("Token", async () =>
+            mintToken(
+              deps.client,
+              credentials,
+              pr.repository,
+              Math.floor(deps.now() / 1000),
+            ),
+          );
+          secrets.push(token);
+          log("Minted an installation token for the Review bot.");
+          await step("Review", async () =>
+            deps.review?.({ pr, mergeBase, diff, worktree: dir, token }),
+          );
+          log(
+            "Prepared the Review run. The Reviewers and posting are not implemented yet: nothing was reviewed or posted.",
+          );
+          return { kind: "prepared", ...outcome } as const;
+        },
+        deps.tmpRoot,
+      );
+    } catch (error) {
+      // Steps inside the worktree name themselves; anything else is the
+      // worktree failing to be created or removed.
+      throw error instanceof StepError
+        ? error
+        : new StepError("Worktree", error);
+    }
+  } catch (error) {
+    // Rebuilt without `cause`, which could hold an unredacted message.
+    const failure = new Error(
+      redact(error instanceof Error ? error.message : String(error), secrets),
+    );
+    if (error instanceof StepError) {
+      throw Object.assign(failure, { step: error.step });
+    }
+    throw failure;
+  }
+}
+
+/** The `.env.local` candidates: this checkout's, then the main one's. */
+async function credentialFiles(git: Git): Promise<string[]> {
+  const root = (await git(["rev-parse", "--show-toplevel"])).trim();
+  const common = (
+    await git(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+  ).trim();
+  return [
+    path.join(root, ".env.local"),
+    path.join(path.dirname(common), ".env.local"),
+  ];
+}
+
+async function main() {
+  const args = parseCliArgs(process.argv.slice(2));
+  if (args.help) {
+    console.log(USAGE);
+    return;
+  }
+  const exec: Exec = defaultExec;
+  const git: Git = (gitArgs, cwd) => exec("git", gitArgs, { cwd });
+  const branch = (
+    await git(["branch", "--show-current"]).catch(() => "")
+  ).trim();
+  await runReview(
+    {
+      pr: args.pr,
+      branch,
+      dryRun: args.dryRun,
+      maxLines: args.maxLines,
+      credentialFiles: await credentialFiles(git),
+    },
+    {
+      git,
+      client: createGitHubClient({ exec }),
+      log: (message) => console.log(message),
+      now: Date.now,
+    },
+  );
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}
