@@ -73,7 +73,7 @@ export interface RunReviewersOptions {
 const MAX_ERRORS_SHOWN = 5;
 
 /** Refs that are safe to hand to `git diff` and to put in a prompt. */
-const SAFE_REF = /^[\w][\w./~^@-]*$/;
+export const SAFE_REF = /^[\w][\w./~^@-]*$/;
 
 /**
  * @returns The text of a prompt in `promptsDir` (default: this checkout's).
@@ -89,19 +89,28 @@ export function loadPrompt(
 }
 
 /**
+ * @returns The `git diff` command, as text for a prompt, that lists the change
+ *   from the merge-base with `base` to HEAD, without the filtered paths.
+ */
+export function diffCommand(base: string): string {
+  if (!SAFE_REF.test(base)) throw new Error(`unsafe base ref: ${base}`);
+  const excludes = PATH_FILTERS.map((p) => `':(exclude)${p}'`).join(" ");
+  return `git diff ${base}...HEAD -- . ${excludes}`;
+}
+
+/**
  * @returns What a Reviewer is asked to do this run: where the change is, what
  *   to skip and the path instructions that concern it.
  */
 export function buildTask(reviewer: ReviewerConfig, base: string): string {
-  if (!SAFE_REF.test(base)) throw new Error(`unsafe base ref: ${base}`);
-  const excludes = PATH_FILTERS.map((p) => `':(exclude)${p}'`).join(" ");
+  const command = diffCommand(base);
   const instructions = PATH_INSTRUCTIONS.filter((i) =>
     i.reviewers.includes(reviewer.name),
   );
   return [
     `Review a pull request as the ${reviewer.name} Reviewer. Its head commit is checked out in the current directory.`,
     "",
-    `List its changes with: git diff ${base}...HEAD -- . ${excludes}`,
+    `List its changes with: ${command}`,
     `Never report anything in these paths: ${PATH_FILTERS.join(", ")}.`,
     "",
     `Report only Findings of severity ${SEVERITIES_FROM_THRESHOLD.join(", ")}.`,

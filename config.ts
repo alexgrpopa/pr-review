@@ -101,6 +101,12 @@ export const SEVERITIES_FROM_THRESHOLD: readonly Severity[] = Object.freeze(
   SEVERITIES.slice(0, SEVERITIES.indexOf(THRESHOLD) + 1),
 );
 
+/**
+ * Lowest confidence (0 to 1) a Finding may have and still be posted. Findings
+ * below it are dropped like those below the Threshold.
+ */
+export const MIN_CONFIDENCE = 0.5;
+
 /** Most Findings one Review run posts. */
 export const MAX_FINDINGS = 15;
 
@@ -109,6 +115,21 @@ export const MAX_DIFF_LINES = 3000;
 
 /** How long one Reviewer may run before it is stopped and marked failed. */
 export const REVIEWER_TIMEOUT_MS = 10 * MINUTE;
+
+/** The Aggregator: one Claude call after the Reviewers. */
+export interface AggregatorConfig {
+  /** File name in `prompts/`, read from the checkout the tool runs from. */
+  promptFile: string;
+  /** Alias or full model name given to `claude --model`. */
+  model: string;
+  timeoutMs: number;
+}
+
+export const AGGREGATOR: AggregatorConfig = Object.freeze({
+  promptFile: "aggregator.md",
+  model: DEFAULT_MODEL,
+  timeoutMs: 5 * MINUTE,
+});
 
 /** Reviewers running at the same time. */
 export const CONCURRENCY = 5;
