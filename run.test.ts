@@ -98,7 +98,7 @@ test("a dry run prints the pull request, base, head SHA and filtered diff", asyn
   assert.match(text, /src\/feature\.ts {2}\+10 -0/);
   assert.match(text, /README\.md {2}\+1 -0/);
   assert.doesNotMatch(text, /pnpm-lock|dist\/|public\/|uncommitted|main-only/);
-  assert.match(text, /Dry run: nothing was reviewed or posted/);
+  assert.match(text, /Dry run: nothing was posted/);
 
   // A dry run reads no credentials and never calls the App endpoints.
   assert.deepEqual(fake.calls, ['lookupPullRequest {"branch":"feature"}']);
@@ -169,7 +169,7 @@ test("a real run mints one token, hands it to the review step, and never logs it
   );
   const outcome = await promise;
 
-  assert.equal(outcome.kind, "prepared");
+  assert.equal(outcome.kind, "reviewed");
   assert.equal(handed?.token, TOKEN);
   assert.deepEqual(fake.calls, [
     'lookupPullRequest {"branch":"feature"}',
@@ -178,7 +178,7 @@ test("a real run mints one token, hands it to the review step, and never logs it
   ]);
   const text = logs.join("\n");
   assert.match(text, /Minted an installation token/);
-  assert.match(text, /not implemented yet/);
+  assert.match(text, /Review run finished/);
   assert.ok(!text.includes(TOKEN));
   assert.ok(!text.includes(testKeyPair().privateKey.split("\n")[1]));
   assert.deepEqual(leftovers(repo, tmpRoot), { registered: 1, folders: [] });

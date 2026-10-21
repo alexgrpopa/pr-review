@@ -11,9 +11,24 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import {
+  assemble,
+  type AggregationResult,
+  type AggregatorStatus,
+} from "./aggregate.ts";
+import { parseDiff } from "./diff.ts";
 import { defaultExec } from "./exec.ts";
+import type { Finding } from "./finding.ts";
 import type { GitHubClient, PullRequest } from "./github.ts";
+import { toCandidate } from "./merge.ts";
+import {
+  GitHubApiError,
+  type NewReview,
+  type PostingClient,
+  type RemoteReview,
+} from "./posting-client.ts";
 import type { Git } from "./pull-request-diff.ts";
+import type { ReviewerResult } from "./reviewers.ts";
 
 let keyPair: { privateKey: string; publicKey: string } | undefined;
 
@@ -300,4 +315,211 @@ export function sampleModelFinding(overrides: Record<string, unknown> = {}) {
       "In src/pages/index.astro line 3, add an alt attribute describing the image.",
     ...overrides,
   };
+}
+
+/** Right-side lines 1-6 of src/a.ts are in the diff; src/old.ts is deleted. */
+export const SAMPLE_DIFF = `diff --git a/src/a.ts b/src/a.ts
+--- a/src/a.ts
++++ b/src/a.ts
+@@ -1,4 +1,6 @@
+ line1
+-line2
++line2 changed
++line3 added
+ line4
+ line5
+ line6
+diff --git a/src/old.ts b/src/old.ts
+deleted file mode 100644
+--- a/src/old.ts
++++ /dev/null
+@@ -1 +0,0 @@
+-gone
+`;
+
+/** A Finding as the Reviewers return it, for the posting tests. */
+export function sampleFinding(overrides: Partial<Finding> = {}): Finding {
+  return {
+    reviewer: "correctness",
+    severity: "major",
+    confidence: 0.8,
+    path: "src/a.ts",
+    line: 2,
+    title: "Wrong value",
+    body: "The value is wrong.",
+    fixPrompt: "In src/a.ts line 2, correct the value.",
+    ...overrides,
+  };
+}
+
+/** Every Reviewer ran and found nothing, unless a result is given. */
+export function okResults(
+  names: readonly string[] = ["architecture", "correctness"],
+): ReviewerResult[] {
+  return names.map((reviewer) => ({
+    reviewer,
+    status: "ok",
+    findings: [],
+    model: "sonnet",
+    durationMs: 1,
+  }));
+}
+
+/**
+ * What the aggregation hands to the posting step, built with the real
+ * `assemble` over {@link SAMPLE_DIFF}.
+ */
+export function sampleAggregation(
+  options: {
+    findings?: Finding[];
+    results?: ReviewerResult[];
+    existingFingerprints?: ReadonlySet<string>;
+    maxFindings?: number;
+    aggregator?: AggregatorStatus;
+  } = {},
+): AggregationResult {
+  const results = options.results ?? okResults();
+  return assemble({
+    files: parseDiff(SAMPLE_DIFF),
+    results,
+    merged: (options.findings ?? []).map(toCandidate),
+    belowThreshold: 0,
+    lowConfidence: 0,
+    duplicates: 0,
+    existingFingerprints: options.existingFingerprints,
+    maxFindings: options.maxFindings,
+    aggregator: options.aggregator ?? { status: "ok", model: "sonnet" },
+    summary: "Changes the value of line two.",
+    walkthrough: [{ path: "src/a.ts", change: "Changes line two" }],
+  });
+}
+
+export interface FakeComment {
+  id: number;
+  body: string;
+  byBot: boolean;
+}
+
+export interface FakePosting {
+  client: PostingClient;
+  /** The pull request as the fake keeps it; tests may set or read it. */
+  state: {
+    body: string;
+    issueComments: FakeComment[];
+    reviewComments: FakeComment[];
+    reviews: RemoteReview[];
+    /** The reviews as submitted, with their comments. */
+    submitted: {
+      event: string;
+      body: string;
+      comments: NewReview["comments"];
+    }[];
+  };
+  /** One entry per call that changes something, e.g. "createReview COMMENT 2". */
+  writes: string[];
+  /** "path:line" of the comments the fake refuses with a 422. */
+  rejectLines: Set<string>;
+}
+
+/**
+ * A pull request that lives in memory, behind the posting client. A review is
+ * refused with a 422 when one of its comments is on a line in `rejectLines`,
+ * like GitHub does for a line it cannot place; a pending review (no event) is
+ * validated the same way, and only one can exist.
+ */
+export function fakePostingClient(
+  initial: Partial<FakePosting["state"]> = {},
+): FakePosting {
+  let nextId = 1000;
+  const state: FakePosting["state"] = {
+    body: "",
+    issueComments: [],
+    reviewComments: [],
+    reviews: [],
+    submitted: [],
+    ...initial,
+  };
+  const writes: string[] = [];
+  const rejectLines = new Set<string>();
+  const stateOfEvent = {
+    APPROVE: "APPROVED",
+    REQUEST_CHANGES: "CHANGES_REQUESTED",
+    COMMENT: "COMMENTED",
+  } as const;
+
+  const client: PostingClient = {
+    async getPullRequestBody() {
+      return state.body;
+    },
+    async updatePullRequestBody(_pr, body) {
+      writes.push("updatePullRequestBody");
+      state.body = body;
+    },
+    async listIssueComments() {
+      return [...state.issueComments];
+    },
+    async createIssueComment(_pr, body) {
+      writes.push("createIssueComment");
+      const id = nextId++;
+      state.issueComments.push({ id, body, byBot: true });
+      return id;
+    },
+    async updateIssueComment(id, body) {
+      writes.push(`updateIssueComment ${id}`);
+      const comment = state.issueComments.find((c) => c.id === id);
+      if (!comment) throw new GitHubApiError(404, "no such comment");
+      comment.body = body;
+    },
+    async listReviewComments() {
+      return [...state.reviewComments];
+    },
+    async listReviews() {
+      return [...state.reviews];
+    },
+    async createReview(_pr, review) {
+      const refused = review.comments.find((c) =>
+        rejectLines.has(`${c.path}:${c.line}`),
+      );
+      if (refused) {
+        writes.push(`rejected ${review.event ?? "PENDING"}`);
+        throw new GitHubApiError(
+          422,
+          "GitHub answered 422 to POST /repos/owner/name/pulls/7/reviews: Line could not be resolved",
+        );
+      }
+      const id = nextId++;
+      if (review.event === undefined) {
+        if (state.reviews.some((r) => r.state === "PENDING")) {
+          throw new GitHubApiError(422, "one pending review at a time");
+        }
+        writes.push("createPendingReview");
+        state.reviews.push({ id, state: "PENDING", byBot: true });
+        return id;
+      }
+      writes.push(`createReview ${review.event} ${review.comments.length}`);
+      state.reviews.push({
+        id,
+        state: stateOfEvent[review.event],
+        byBot: true,
+      });
+      for (const comment of review.comments) {
+        state.reviewComments.push({
+          id: nextId++,
+          body: comment.body,
+          byBot: true,
+        });
+      }
+      state.submitted.push({
+        event: review.event,
+        body: review.body,
+        comments: review.comments,
+      });
+      return id;
+    },
+    async deleteReview(_pr, id) {
+      writes.push("deleteReview");
+      state.reviews = state.reviews.filter((r) => r.id !== id);
+    },
+  };
+  return { client, state, writes, rejectLines };
 }

@@ -1,7 +1,8 @@
 /**
- * Review runner: `pnpm pr-review`, the start of a Review run for a pull
- * request, on the developer's machine. This is everything up to the
- * Reviewers, which are not run yet.
+ * Review runner: `pnpm pr-review`, a Review run for a pull request, on the
+ * developer's machine. It prepares the change (pull request, merge-base,
+ * worktree of the head SHA, diff, size check, token) and hands it to the
+ * review step (pipeline.ts): Reviewers, aggregation and posting.
  *
  * CLI:
  *
@@ -14,20 +15,25 @@
  *   - `--max-lines` raises the size limit (default 3000 changed lines, added
  *     plus deleted, after the path filters in config.ts). A bigger change
  *     stops the run; it is never truncated.
- *   - `--dry-run` prints what would be reviewed. Posting does not exist yet,
- *     so for now it only changes the final message and skips the credentials.
+ *   - `--dry-run` runs the Reviewers and the aggregation and prints everything
+ *     that would be posted (the Summary block, the Findings comment, each
+ *     inline comment with its path and line, the Verdict). It makes no write
+ *     and mints no token: it neither reads the credentials nor calls the
+ *     GitHub App endpoints, and reads the pull request with the developer's
+ *     `gh` login.
  *
  * Steps of a run, each named in the failure message: Resolve PR, Credentials
- * (not on a dry run), Fetch, Merge-base, Worktree, Diff, Size check and Token
- * (not on a dry run). The worktree of the head SHA is removed afterwards, also
- * when a step fails.
+ * (not on a dry run), Fetch, Merge-base, Worktree, Diff, Size check, Token
+ * (not on a dry run) and Review, which names its own stages (Read pull
+ * request, Reviewers, Read diff, Aggregation, Plan, Summary block, Findings
+ * comment, Inline review). The worktree of the head SHA is removed afterwards,
+ * also when a step fails.
  *
  * Credentials: PR_REVIEW_APP_ID and PR_REVIEW_APP_PRIVATE_KEY are read from
- * `.env.local` (credentials.ts) only on a real run. A dry run neither reads
- * them nor calls the GitHub App endpoints, so it needs no setup and does only
- * reads. A real run mints the one-hour installation token late, after the
- * change is prepared and the size limit passed, so that a run that stops early
- * never asks GitHub for a token, and mints it once. The token lives in memory:
+ * `.env.local` (credentials.ts) only on a real run. A real run mints the
+ * one-hour installation token late, after the change is prepared and the size
+ * limit passed, so that a run that stops early never asks GitHub for a token,
+ * and mints it once. The token lives in memory:
  * it is never stored or logged, child processes (`git`, `gh`) get a scrubbed
  * environment, and every message is redacted of the key and the token before
  * it is shown.
@@ -53,6 +59,7 @@ import {
   type GitHubClient,
   type PullRequest,
 } from "./github.ts";
+import { createReviewStep } from "./pipeline.ts";
 import { mintToken } from "./token.ts";
 
 export interface RunOptions {
@@ -73,7 +80,7 @@ export interface PreparedReview {
   diff: DiffSummary;
   /** Absolute path of the worktree of the head SHA; removed after the run. */
   worktree: string;
-  /** Installation token of the Review bot; null on a dry run. */
+  /** Installation token of the Review bot; null on a dry run, which posts nothing. */
   token: string | null;
 }
 
@@ -85,12 +92,12 @@ export interface RunDeps {
   now: () => number;
   /** Where worktrees are created. Default: the OS temp folder. */
   tmpRoot?: string;
-  /** Runs the Reviewers and posts. Not implemented yet. */
+  /** Runs the Reviewers, aggregates and posts (see pipeline.ts). */
   review?: (prepared: PreparedReview) => Promise<void>;
 }
 
 export type Outcome =
-  | { kind: "prepared"; pr: number; files: number; changedLines: number }
+  | { kind: "reviewed"; pr: number; files: number; changedLines: number }
   | { kind: "dry-run"; pr: number; files: number; changedLines: number }
   | { kind: "empty"; pr: number };
 
@@ -111,7 +118,7 @@ function describeDiff(summary: DiffSummary): string[] {
 }
 
 /**
- * Prepares a Review run for a pull request.
+ * Runs a Review run for a pull request.
  * @throws A `StepError` (message: the step, then the reason) when a step
  *   fails. Its message never holds the private key or the token.
  */
@@ -125,7 +132,8 @@ export async function runReview(
     try {
       return await fn();
     } catch (error) {
-      throw new StepError(name, error);
+      // A step that names its own stages keeps its name.
+      throw error instanceof StepError ? error : new StepError(name, error);
     }
   };
 
@@ -178,28 +186,31 @@ export async function runReview(
             files: diff.files.length,
             changedLines: diff.changedLines,
           };
-          if (options.dryRun || !credentials) {
-            log("Dry run: nothing was reviewed or posted.");
-            return { kind: "dry-run", ...outcome } as const;
-          }
 
-          const token = await step("Token", async () =>
-            mintToken(
-              deps.client,
-              credentials,
-              pr.repository,
-              Math.floor(deps.now() / 1000),
-            ),
-          );
-          secrets.push(token);
-          log("Minted an installation token for the Review bot.");
+          // A dry run mints no token and posts nothing.
+          let token: string | null = null;
+          if (credentials) {
+            const minted = await step("Token", async () =>
+              mintToken(
+                deps.client,
+                credentials,
+                pr.repository,
+                Math.floor(deps.now() / 1000),
+              ),
+            );
+            secrets.push(minted);
+            token = minted;
+            log("Minted an installation token for the Review bot.");
+          }
           await step("Review", async () =>
             deps.review?.({ pr, mergeBase, diff, worktree: dir, token }),
           );
-          log(
-            "Prepared the Review run. The Reviewers and posting are not implemented yet: nothing was reviewed or posted.",
-          );
-          return { kind: "prepared", ...outcome } as const;
+          if (options.dryRun) {
+            log("Dry run: nothing was posted.");
+            return { kind: "dry-run", ...outcome } as const;
+          }
+          log("Review run finished.");
+          return { kind: "reviewed", ...outcome } as const;
         },
         deps.tmpRoot,
       );
@@ -241,6 +252,7 @@ async function main() {
     return;
   }
   const exec: Exec = defaultExec;
+  const log = (message: string) => console.log(message);
   const git: Git = (gitArgs, cwd) => exec("git", gitArgs, { cwd });
   const branch = (
     await git(["branch", "--show-current"]).catch(() => "")
@@ -256,15 +268,28 @@ async function main() {
     {
       git,
       client: createGitHubClient({ exec }),
-      log: (message) => console.log(message),
+      log,
       now: Date.now,
+      review: createReviewStep({ git, exec, log }),
     },
   );
 }
 
+/**
+ * Prints why a run failed: the message, which names the step and never holds
+ * a secret (see {@link runReview}). Nothing else, so no stack or cause.
+ * @returns The exit code: non-zero.
+ */
+export function reportFailure(
+  error: unknown,
+  print: (message: string) => void = (message) => console.error(message),
+): number {
+  print(error instanceof Error ? error.message : String(error));
+  return 1;
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   main().catch((error) => {
-    console.error(error instanceof Error ? error.message : error);
-    process.exitCode = 1;
+    process.exitCode = reportFailure(error);
   });
 }
