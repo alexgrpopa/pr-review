@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
 import { redact, runReview, type RunDeps, type RunOptions } from "./run.ts";
 import {
   createRepoFixture,
@@ -15,7 +15,7 @@ import {
 } from "./test-helpers.ts";
 
 /** Fixture repo, empty temp folder for worktrees, credentials file. */
-function setup(t: { after: (fn: () => void) => void }) {
+function setup(t: TestContext) {
   const repo = createRepoFixture();
   const tmpRoot = mkdtempSync(path.join(tmpdir(), "pr-review-run-"));
   const envFile = path.join(tmpRoot, ".env.local");
@@ -203,23 +203,15 @@ test("missing credentials stop a real run before any network write, naming the v
 
 test("no pull request fails in the Resolve PR step", async (t) => {
   const { repo, tmpRoot, envFile } = setup(t);
-  const logs: string[] = [];
+  const { promise } = run(
+    repo,
+    tmpRoot,
+    envFile,
+    { dryRun: true },
+    { client: fakeClient(null).client, now: Date.now, tmpRoot },
+  );
   await assert.rejects(
-    runReview(
-      {
-        branch: "feature",
-        dryRun: true,
-        maxLines: 3000,
-        credentialFiles: [envFile],
-      },
-      {
-        git: repo.git,
-        client: fakeClient(null).client,
-        log: (message) => logs.push(message),
-        now: Date.now,
-        tmpRoot,
-      },
-    ),
+    promise,
     /Resolve PR failed: No open pull request for the branch feature/,
   );
 });
@@ -228,24 +220,19 @@ test("each failing step is named", async (t) => {
   const { repo, tmpRoot, envFile } = setup(t);
   // A head SHA the remote does not have.
   const missingHead = { ...repo.pr, headSha: "f".repeat(40) };
-  const result = runReview(
-    {
-      branch: "feature",
-      dryRun: true,
-      maxLines: 3000,
-      credentialFiles: [envFile],
-    },
-    {
-      git: repo.git,
-      client: fakeClient(missingHead).client,
-      log: () => undefined,
-      now: Date.now,
-      tmpRoot: path.join(tmpRoot, "worktrees"),
-    },
+  const fetchStep = run(
+    repo,
+    tmpRoot,
+    envFile,
+    { dryRun: true },
+    { client: fakeClient(missingHead).client, now: Date.now },
   );
-  await assert.rejects(result, /Fetch failed: .*pushed to meanwhile/);
+  await assert.rejects(
+    fetchStep.promise,
+    /Fetch failed: .*pushed to meanwhile/,
+  );
 
-  const token = run(
+  const tokenStep = run(
     repo,
     tmpRoot,
     envFile,
@@ -258,7 +245,7 @@ test("each failing step is named", async (t) => {
       }).client,
     },
   );
-  await assert.rejects(token.promise, /Token failed: .*not installed/);
+  await assert.rejects(tokenStep.promise, /Token failed: .*not installed/);
   assert.deepEqual(leftovers(repo, tmpRoot), { registered: 1, folders: [] });
 });
 

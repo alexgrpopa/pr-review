@@ -11,6 +11,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { TestContext } from "node:test";
 import {
   assemble,
   type AggregationResult,
@@ -25,10 +26,21 @@ import {
   GitHubApiError,
   type NewReview,
   type PostingClient,
+  type RemoteComment,
   type RemoteReview,
 } from "./posting-client.ts";
 import type { Git } from "./pull-request-diff.ts";
 import type { ReviewerResult } from "./reviewers.ts";
+
+/** An empty temporary folder, removed after the test. */
+export async function tempDir(
+  t: TestContext,
+  prefix = "worktree-",
+): Promise<string> {
+  const dir = await mkdtemp(path.join(tmpdir(), prefix));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  return dir;
+}
 
 let keyPair: { privateKey: string; publicKey: string } | undefined;
 
@@ -188,22 +200,7 @@ export function createRepoFixture(): RepoFixture {
   };
 }
 
-/**
- * Writes an executable that stands in for `claude`. Give it
- * the body of what the fake should do and pass its `command` to the code under
- * test:
- *
- * ```js
- * const fake = await createFakeClaude(`reply({ findings: [] });`);
- * t.after(fake.cleanup);
- * await runReviewers({ worktree, base: "main", command: fake.command });
- * assert.equal((await fake.calls()).length, 5);
- * ```
- *
- * In the body, `call` holds what the process received (`args`, `cwd`, `stdin`,
- * `envNames`), `reply(structured)` prints a successful `claude -p` result,
- * `print(text)` prints raw text, and `sleep(ms)` waits. Every call is recorded,
- */
+/** One run of the fake `claude`, as recorded. */
 export interface FakeCall {
   id: string;
   args: string[];
@@ -224,6 +221,23 @@ export interface FakeClaude {
   cleanup(): Promise<void>;
 }
 
+/**
+ * Writes an executable that stands in for `claude`. Give it
+ * the body of what the fake should do and pass its `command` to the code under
+ * test:
+ *
+ * ```js
+ * const fake = await createFakeClaude(`reply({ findings: [] });`);
+ * t.after(fake.cleanup);
+ * await runReviewers({ worktree, base: "main", command: fake.command });
+ * assert.equal((await fake.calls()).length, 5);
+ * ```
+ *
+ * In the body, `call` holds what the process received (`args`, `cwd`, `stdin`,
+ * `envNames`), `reply(structured)` prints a successful `claude -p` result,
+ * `print(text)` prints raw text, and `sleep(ms)` waits. Every call is
+ * recorded, and read back with `calls()`.
+ */
 export async function createFakeClaude(body: string): Promise<FakeClaude> {
   const dir = await mkdtemp(path.join(tmpdir(), "fake-claude-"));
   const log = path.join(dir, "calls.jsonl");
@@ -394,11 +408,7 @@ export function sampleAggregation(
   });
 }
 
-export interface FakeComment {
-  id: number;
-  body: string;
-  byBot: boolean;
-}
+export type FakeComment = RemoteComment;
 
 export interface FakePosting {
   client: PostingClient;

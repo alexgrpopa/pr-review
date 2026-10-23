@@ -34,15 +34,21 @@ function stubFetch(answers: (Response | Error)[]) {
   return { impl, seen };
 }
 
-const json = (value: unknown, status = 200) =>
-  new Response(JSON.stringify(value), { status });
-
-test("writes carry the installation token, a JSON body and the API version", async () => {
-  const { impl, seen } = stubFetch([json({ id: 5 })]);
+/** A posting client on the fetch transport, answering from a queue. */
+function fetchClient(answers: (Response | Error)[]) {
+  const { impl, seen } = stubFetch(answers);
   const client = createPostingClient(
     "owner/name",
     createFetchTransport({ token: TOKEN, fetch: impl }),
   );
+  return { client, seen };
+}
+
+const json = (value: unknown, status = 200) =>
+  new Response(JSON.stringify(value), { status });
+
+test("writes carry the installation token, a JSON body and the API version", async () => {
+  const { client, seen } = fetchClient([json({ id: 5 })]);
   assert.equal(await client.createIssueComment(7, "hello"), 5);
   assert.equal(
     seen[0].url,
@@ -55,7 +61,7 @@ test("writes carry the installation token, a JSON body and the API version", asy
 });
 
 test("a refused review is a 422 whose message names the request but never the token", async () => {
-  const { impl } = stubFetch([
+  const { client } = fetchClient([
     json(
       {
         message: "Unprocessable Entity",
@@ -64,10 +70,6 @@ test("a refused review is a 422 whose message names the request but never the to
       422,
     ),
   ]);
-  const client = createPostingClient(
-    "owner/name",
-    createFetchTransport({ token: TOKEN, fetch: impl }),
-  );
   await assert.rejects(
     client.createReview(7, {
       commit_id: "abc",
@@ -90,11 +92,7 @@ test("a refused review is a 422 whose message names the request but never the to
 });
 
 test("other statuses are not a rejection", async () => {
-  const { impl } = stubFetch([json({ message: "Forbidden" }, 403)]);
-  const client = createPostingClient(
-    "owner/name",
-    createFetchTransport({ token: TOKEN, fetch: impl }),
-  );
+  const { client } = fetchClient([json({ message: "Forbidden" }, 403)]);
   await assert.rejects(client.getPullRequestBody(7), (error: unknown) => {
     assert.equal(isRejected(error), false);
     assert.match((error as Error).message, /403.*Forbidden/);
@@ -111,11 +109,7 @@ test("lists are read page by page and comments know whether a bot wrote them", a
         user: { type: from === 1 ? "Bot" : "User" },
       })),
     );
-  const { impl, seen } = stubFetch([page(1, 100), page(101, 3)]);
-  const client = createPostingClient(
-    "owner/name",
-    createFetchTransport({ token: TOKEN, fetch: impl }),
-  );
+  const { client, seen } = fetchClient([page(1, 100), page(101, 3)]);
   const comments = await client.listReviewComments(7);
   assert.equal(comments.length, 103);
   assert.equal(comments[0].byBot, true);
@@ -125,11 +119,7 @@ test("lists are read page by page and comments know whether a bot wrote them", a
 });
 
 test("an unexpected answer is reported, not guessed at", async () => {
-  const { impl } = stubFetch([json({ nope: true })]);
-  const client = createPostingClient(
-    "owner/name",
-    createFetchTransport({ token: TOKEN, fetch: impl }),
-  );
+  const { client } = fetchClient([json({ nope: true })]);
   await assert.rejects(
     client.listReviews(7),
     /Unexpected list response from GitHub/,

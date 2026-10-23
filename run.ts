@@ -52,7 +52,7 @@ import {
   type DiffSummary,
   type Git,
 } from "./pull-request-diff.ts";
-import { defaultExec, StepError, type Exec } from "./exec.ts";
+import { defaultExec, errorMessage, StepError, type Exec } from "./exec.ts";
 import {
   createGitHubClient,
   resolvePullRequest,
@@ -223,9 +223,7 @@ export async function runReview(
     }
   } catch (error) {
     // Rebuilt without `cause`, which could hold an unredacted message.
-    const failure = new Error(
-      redact(error instanceof Error ? error.message : String(error), secrets),
-    );
+    const failure = new Error(redact(errorMessage(error), secrets));
     if (error instanceof StepError) {
       throw Object.assign(failure, { step: error.step });
     }
@@ -284,7 +282,7 @@ export function reportFailure(
   error: unknown,
   print: (message: string) => void = (message) => console.error(message),
 ): number {
-  print(error instanceof Error ? error.message : String(error));
+  print(errorMessage(error));
   return 1;
 }
 

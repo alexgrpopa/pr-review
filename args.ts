@@ -3,9 +3,11 @@
  */
 
 import { parseArgs } from "node:util";
+import { MAX_DIFF_LINES } from "./config.ts";
+import { errorMessage } from "./exec.ts";
 
 /** Changed lines (added plus deleted) above which a Review run stops. */
-export const DEFAULT_MAX_LINES = 3000;
+export const DEFAULT_MAX_LINES = MAX_DIFF_LINES;
 
 export const USAGE =
   "Usage: pnpm pr-review [--pr <number>] [--max-lines <number>] [--dry-run]";
@@ -19,10 +21,10 @@ export interface Args {
 }
 
 function positiveInteger(name: string, value: string): number {
-  if (!/^[0-9]+$/.test(value) || !Number.isSafeInteger(Number(value))) {
+  const number = Number(value);
+  if (!/^[0-9]+$/.test(value) || !Number.isSafeInteger(number)) {
     throw new Error(`${name} needs a positive whole number, got "${value}"`);
   }
-  const number = Number(value);
   if (number < 1) throw new Error(`${name} needs a positive whole number`);
   return number;
 }
@@ -55,9 +57,6 @@ export function parseCliArgs(argv: string[]): Args {
       help: values.help,
     };
   } catch (error) {
-    throw new Error(
-      `${error instanceof Error ? error.message : String(error)}\n${USAGE}`,
-      { cause: error },
-    );
+    throw new Error(`${errorMessage(error)}\n${USAGE}`, { cause: error });
   }
 }

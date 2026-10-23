@@ -160,6 +160,13 @@ interface Exit {
   stderr: string;
 }
 
+/** How a process that errored ended, for a failure detail. */
+function describeExit(exit: Exit): string {
+  if (exit.signal) return `was stopped by ${exit.signal}`;
+  if (exit.code !== 0) return `exited with code ${exit.code}`;
+  return "reported an error";
+}
+
 function execute(
   command: string,
   args: string[],
@@ -262,12 +269,10 @@ export async function runClaude(
         `claude -p hit the usage limit: ${quote(message)}`,
       );
     }
-    const how = exit.signal
-      ? `was stopped by ${exit.signal}`
-      : exit.code !== 0
-        ? `exited with code ${exit.code}`
-        : "reported an error";
-    return failed("process error", `claude -p ${how}: ${quote(message)}`);
+    return failed(
+      "process error",
+      `claude -p ${describeExit(exit)}: ${quote(message)}`,
+    );
   }
 
   if (!envelope) {

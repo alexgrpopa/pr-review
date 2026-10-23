@@ -141,7 +141,9 @@ function emptyCounts(): SeverityCounts {
   return Object.fromEntries(SEVERITIES.map((s) => [s, 0])) as SeverityCounts;
 }
 
-function countBySeverity(findings: readonly { severity: Severity }[]) {
+function countBySeverity(
+  findings: readonly { severity: Severity }[],
+): SeverityCounts {
   const counts = emptyCounts();
   for (const finding of findings) counts[finding.severity]++;
   return counts;

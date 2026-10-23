@@ -190,27 +190,28 @@ export function renderFindingsComment(
     dropped: readonly string[],
     withFix: boolean,
   ): string => {
+    const parts = [...head];
+    if (shown.length > 0) {
+      parts.push(shown.join("\n\n"));
+    } else if (dropped.length === 0) {
+      parts.push("None.");
+    }
+    if (dropped.length > 0) {
+      parts.push(
+        `_${plural(dropped.length, "more Finding is", "more Findings are")} not shown: the comment would pass GitHub's size limit. They were posted before and are not posted again._`,
+      );
+    }
+    parts.push(...report);
+    if (fixBlock) {
+      parts.push(
+        withFix
+          ? fixBlock
+          : "_The Fix prompt for all posted Findings is not shown: the comment would pass GitHub's size limit. Each inline comment has its own._",
+      );
+    }
     const hidden = [...orphans, ...extractFingerprints(dropped)];
-    return [
-      ...head,
-      shown.length > 0 ? shown.join("\n\n") : dropped.length > 0 ? "" : "None.",
-      ...(dropped.length > 0
-        ? [
-            `_${plural(dropped.length, "more Finding is", "more Findings are")} not shown: the comment would pass GitHub's size limit. They were posted before and are not posted again._`,
-          ]
-        : []),
-      ...report,
-      ...(fixBlock && withFix
-        ? [fixBlock]
-        : fixBlock
-          ? [
-              "_The Fix prompt for all posted Findings is not shown: the comment would pass GitHub's size limit. Each inline comment has its own._",
-            ]
-          : []),
-      ...(hidden.length > 0 ? [fingerprintMarkers(hidden)] : []),
-    ]
-      .filter((part) => part !== "")
-      .join("\n\n");
+    if (hidden.length > 0) parts.push(fingerprintMarkers(hidden));
+    return parts.filter((part) => part !== "").join("\n\n");
   };
 
   const everything = build(entries, [], true);

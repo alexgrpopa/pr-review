@@ -19,8 +19,14 @@
 import { runClaude, type FailureReason } from "./claude.ts";
 import { AGGREGATOR, type AggregatorConfig } from "./config.ts";
 import type { ChangedFile } from "./diff.ts";
+import { errorMessage } from "./exec.ts";
 import type { Candidate } from "./merge.ts";
-import { PROMPTS_DIR, diffCommand, loadPrompt } from "./reviewers.ts";
+import {
+  PROMPTS_DIR,
+  describeErrors,
+  diffCommand,
+  loadPrompt,
+} from "./reviewers.ts";
 
 export interface WalkthroughEntry {
   path: string;
@@ -99,9 +105,6 @@ export const AGGREGATOR_OUTPUT_SCHEMA = Object.freeze({
 
 /** Longest Finding body handed to the Aggregator, in characters. */
 const BODY_LENGTH = 600;
-
-/** Longest list of validation errors quoted in a failure detail. */
-const MAX_ERRORS_SHOWN = 5;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -249,7 +252,7 @@ export async function runAggregator(
   } catch (error) {
     return failed(
       "process error",
-      `could not prepare the run: ${error instanceof Error ? error.message : String(error)}`,
+      `could not prepare the run: ${errorMessage(error)}`,
     );
   }
 
@@ -271,11 +274,9 @@ export async function runAggregator(
     options.files,
   );
   if (!checked.ok) {
-    const shown = checked.errors.slice(0, MAX_ERRORS_SHOWN).join("; ");
-    const more = checked.errors.length - MAX_ERRORS_SHOWN;
     return failed(
       "invalid output",
-      `output does not match the schema: ${shown}${more > 0 ? ` (and ${more} more)` : ""}`,
+      `output does not match the schema: ${describeErrors(checked.errors)}`,
     );
   }
   return {

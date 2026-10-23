@@ -1,18 +1,14 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { test } from "node:test";
+import { realpath } from "node:fs/promises";
+import { test, type TestContext } from "node:test";
 import { claudeArgs, claudeEnv, runClaude } from "./claude.ts";
-import { createFakeClaude } from "./test-helpers.ts";
+import { createFakeClaude, tempDir } from "./test-helpers.ts";
 
 const SCHEMA = { type: "object" };
 
-async function workdir(t: { after(fn: () => Promise<void>): void }) {
-  const dir = await mkdtemp(path.join(tmpdir(), "claude-cwd-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
-  return dir;
+function workdir(t: TestContext): Promise<string> {
+  return tempDir(t, "claude-cwd-");
 }
 
 function options(cwd: string, command: string) {

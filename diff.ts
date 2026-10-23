@@ -85,23 +85,25 @@ export function diffGitArgs(base: string): string[] {
 
 const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 
+/** Byte of each single-character escape in git's C-style quoting. */
+const SIMPLE_ESCAPES: Record<string, number> = {
+  n: 10,
+  t: 9,
+  r: 13,
+  a: 7,
+  b: 8,
+  f: 12,
+  v: 11,
+  '"': 34,
+  "\\": 92,
+};
+
 /** Decodes the C-style quoting git uses for unusual paths. */
 function unquote(text: string): string {
   if (!(text.startsWith('"') && text.endsWith('"') && text.length >= 2)) {
     return text;
   }
   const bytes: number[] = [];
-  const simple: Record<string, number> = {
-    n: 10,
-    t: 9,
-    r: 13,
-    a: 7,
-    b: 8,
-    f: 12,
-    v: 11,
-    '"': 34,
-    "\\": 92,
-  };
   const inner = text.slice(1, -1);
   for (let i = 0; i < inner.length; i++) {
     const char = inner[i];
@@ -113,8 +115,8 @@ function unquote(text: string): string {
     if (octal) {
       bytes.push(parseInt(octal[0], 8));
       i += 3;
-    } else if (inner[i + 1] in simple) {
-      bytes.push(simple[inner[i + 1]]);
+    } else if (inner[i + 1] in SIMPLE_ESCAPES) {
+      bytes.push(SIMPLE_ESCAPES[inner[i + 1]]);
       i += 1;
     } else {
       bytes.push(92);

@@ -31,6 +31,7 @@
 
 import { THRESHOLD } from "./config.ts";
 import type { Severity } from "./finding.ts";
+import { plural } from "./markdown.ts";
 import { meetsThreshold } from "./selection.ts";
 
 export type Verdict = "REQUEST_CHANGES" | "APPROVE" | "COMMENT";
@@ -50,9 +51,6 @@ export interface VerdictResult {
   /** One sentence for the review body. */
   reason: string;
 }
-
-const plural = (count: number, one: string, many: string) =>
-  `${count} ${count === 1 ? one : many}`;
 
 export function decideVerdict(input: VerdictInput): VerdictResult {
   const threshold = input.threshold ?? THRESHOLD;

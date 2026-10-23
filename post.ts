@@ -40,7 +40,7 @@
  */
 
 import type { AggregationResult, AnchoredFinding } from "./aggregate.ts";
-import { StepError } from "./exec.ts";
+import { inStep } from "./exec.ts";
 import {
   FINDINGS_MARKER,
   renderFindingsComment,
@@ -48,7 +48,11 @@ import {
   type FindingsCommentInput,
 } from "./findings-comment.ts";
 import { extractFingerprints } from "./fingerprint.ts";
-import { renderReviewBody, toReviewComment } from "./inline-review.ts";
+import {
+  renderReviewBody,
+  toReviewComment,
+  type ReviewComment,
+} from "./inline-review.ts";
 import { plural } from "./markdown.ts";
 import {
   isRejected,
@@ -243,17 +247,15 @@ export interface PostContext {
   log: (message: string) => void;
 }
 
-async function inStep<T>(step: string, fn: () => Promise<T>): Promise<T> {
-  try {
-    return await fn();
-  } catch (error) {
-    throw new StepError(step, error);
-  }
-}
-
 interface Submitted {
   posted: number;
   fellBack: FellBackFinding[];
+}
+
+/** An Anchored finding with the comment it becomes. */
+interface Entry {
+  finding: AnchoredFinding;
+  comment: ReviewComment;
 }
 
 /**
@@ -266,14 +268,11 @@ async function submitReview(
   headSha: string,
   review: NonNullable<PostingPlan["review"]>,
 ): Promise<Submitted> {
-  const entries = review.findings.map((finding) => ({
+  const entries: Entry[] = review.findings.map((finding) => ({
     finding,
     comment: toReviewComment(finding),
   }));
-  const submit = (
-    accepted: typeof entries,
-    fellBack: number,
-  ): Promise<number> =>
+  const submit = (accepted: Entry[], fellBack: number): Promise<number> =>
     client.createReview(ctx.pr, {
       commit_id: headSha,
       event: review.event,
@@ -297,8 +296,8 @@ async function submitReview(
   }
 
   // A pending review is validated like a real one and is seen by nobody.
-  const reasons = new Map<(typeof entries)[number], string>();
-  const accepts = async (group: typeof entries): Promise<boolean> => {
+  const reasons = new Map<Entry, string>();
+  const accepts = async (group: Entry[]): Promise<boolean> => {
     try {
       const id = await client.createReview(ctx.pr, {
         commit_id: headSha,
@@ -319,8 +318,8 @@ async function submitReview(
     }
   };
   const isolate = async (
-    group: typeof entries,
-  ): Promise<{ good: typeof entries; bad: typeof entries }> => {
+    group: Entry[],
+  ): Promise<{ good: Entry[]; bad: Entry[] }> => {
     if (group.length === 0) return { good: [], bad: [] };
     if (await accepts(group)) return { good: group, bad: [] };
     if (group.length === 1) return { good: [], bad: group };
@@ -334,7 +333,7 @@ async function submitReview(
   };
 
   const { good, bad } = await isolate(entries);
-  const describe = (e: (typeof entries)[number]): FellBackFinding => ({
+  const describe = (e: Entry): FellBackFinding => ({
     finding: e.finding,
     reason: reasons.get(e) ?? "rejected",
   });

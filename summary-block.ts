@@ -61,6 +61,24 @@ function walkthroughRow(entry: WalkthroughEntry): string {
   return `| ${inlineCode(neutralise(entry.path))} | ${cell(entry.change)} |`;
 }
 
+/** @returns The walkthrough heading, table and note; none when it is empty. */
+function walkthroughSection(
+  rows: readonly string[],
+  omitted: number,
+): string[] {
+  if (rows.length === 0 && omitted === 0) return [];
+  const section = [
+    "### Walkthrough",
+    ["| File | What changed |", "| --- | --- |", ...rows].join("\n"),
+  ];
+  if (omitted > 0) {
+    section.push(
+      `_${plural(omitted, "more file", "more files")} not shown: the description would pass GitHub's size limit._`,
+    );
+  }
+  return section;
+}
+
 function assemble(
   input: SummaryBlockInput,
   summary: string,
@@ -71,17 +89,7 @@ function assemble(
     SUMMARY_START,
     "## PR review",
     summary,
-    ...(rows.length > 0 || omitted > 0
-      ? [
-          "### Walkthrough",
-          ["| File | What changed |", "| --- | --- |", ...rows].join("\n"),
-          ...(omitted > 0
-            ? [
-                `_${plural(omitted, "more file", "more files")} not shown: the description would pass GitHub's size limit._`,
-              ]
-            : []),
-        ]
-      : []),
+    ...walkthroughSection(rows, omitted),
     "### Reviewers",
     reviewerTable(input.reviewers),
     `<sub>Reviewed \`${input.headSha.slice(0, 7)}\`. Everything between the markers is rewritten on every review run.</sub>`,

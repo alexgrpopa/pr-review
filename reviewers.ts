@@ -21,6 +21,7 @@ import {
   SEVERITIES_FROM_THRESHOLD,
   type ReviewerConfig,
 } from "./config.ts";
+import { errorMessage } from "./exec.ts";
 import {
   REVIEWER_OUTPUT_SCHEMA,
   validateReviewerOutput,
@@ -74,6 +75,16 @@ const MAX_ERRORS_SHOWN = 5;
 
 /** Refs that are safe to hand to `git diff` and to put in a prompt. */
 export const SAFE_REF = /^[\w][\w./~^@-]*$/;
+
+/**
+ * @returns The first validation errors, joined for a failure detail, and how
+ *   many more there were.
+ */
+export function describeErrors(errors: readonly string[]): string {
+  const shown = errors.slice(0, MAX_ERRORS_SHOWN).join("; ");
+  const more = errors.length - MAX_ERRORS_SHOWN;
+  return more > 0 ? `${shown} (and ${more} more)` : shown;
+}
 
 /**
  * @returns The text of a prompt in `promptsDir` (default: this checkout's).
@@ -149,7 +160,7 @@ export async function runReviewer(
   } catch (error) {
     return failed(
       "process error",
-      `could not prepare the run: ${error instanceof Error ? error.message : String(error)}`,
+      `could not prepare the run: ${errorMessage(error)}`,
     );
   }
 
@@ -167,11 +178,9 @@ export async function runReviewer(
 
   const checked = validateReviewerOutput(reviewer.name, run.output);
   if (!checked.ok) {
-    const shown = checked.errors.slice(0, MAX_ERRORS_SHOWN).join("; ");
-    const more = checked.errors.length - MAX_ERRORS_SHOWN;
     return failed(
       "invalid output",
-      `output does not match the Finding schema: ${shown}${more > 0 ? ` (and ${more} more)` : ""}`,
+      `output does not match the Finding schema: ${describeErrors(checked.errors)}`,
     );
   }
   return {

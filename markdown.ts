@@ -57,5 +57,7 @@ export function truncate(text: string, max: number, note: string): string {
   return `${text.slice(0, end)}${note}`;
 }
 
-export const plural = (count: number, one: string, many: string): string =>
-  `${count} ${count === 1 ? one : many}`;
+/** @returns `count` with the singular or plural form, as in "1 file". */
+export function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}

@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { PATH_FILTERS } from "./config.ts";
 import type { PullRequest } from "./github.ts";
+import { plural } from "./markdown.ts";
 
 /** Runs `git <args>` in the repository and resolves with stdout. */
 export type Git = (args: string[], cwd?: string) => Promise<string>;
@@ -171,9 +172,9 @@ export async function diffPullRequest(
  */
 export function checkSize(summary: DiffSummary, maxLines: number): void {
   if (summary.changedLines > maxLines) {
-    const files = summary.files.length;
+    const files = plural(summary.files.length, "file", "files");
     throw new Error(
-      `The filtered diff changes ${summary.changedLines} lines in ${files} ${files === 1 ? "file" : "files"}, over the limit of ${maxLines} lines. Nothing is reviewed or truncated. Run again with --max-lines ${summary.changedLines} (or more) to review it anyway.`,
+      `The filtered diff changes ${summary.changedLines} lines in ${files}, over the limit of ${maxLines} lines. Nothing is reviewed or truncated. Run again with --max-lines ${summary.changedLines} (or more) to review it anyway.`,
     );
   }
 }

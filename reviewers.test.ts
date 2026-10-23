@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { test } from "node:test";
 import { PATH_FILTERS, REVIEWERS, type ReviewerConfig } from "./config.ts";
@@ -12,15 +11,11 @@ import {
   runReviewer,
   runReviewers,
 } from "./reviewers.ts";
-import { createFakeClaude, sampleModelFinding } from "./test-helpers.ts";
-
-type Cleanup = { after(fn: () => Promise<void>): void };
-
-async function worktree(t: Cleanup) {
-  const dir = await mkdtemp(path.join(tmpdir(), "worktree-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
-  return dir;
-}
+import {
+  createFakeClaude,
+  sampleModelFinding,
+  tempDir,
+} from "./test-helpers.ts";
 
 /** The fake answers by Reviewer: the task on stdin names it. */
 const BY_REVIEWER = `
@@ -31,7 +26,7 @@ test("every Reviewer is started in the worktree with its own model, and returns 
   const fake = await createFakeClaude(`${BY_REVIEWER}
     reply({ findings: [{ severity: "minor", confidence: 0.5, title: name, body: "b", fixPrompt: "f" }] });`);
   t.after(fake.cleanup);
-  const cwd = await worktree(t);
+  const cwd = await tempDir(t);
   const reviewers: ReviewerConfig[] = REVIEWERS.map((r) =>
     r.name === "security" ? { ...r, model: "opus" } : { ...r },
   );
@@ -74,7 +69,7 @@ test("the Reviewer's name is stamped on its Findings, whatever the model wrote",
   );
   t.after(fake.cleanup);
   const result = await runReviewer(REVIEWERS[0], {
-    worktree: await worktree(t),
+    worktree: await tempDir(t),
     base: "main",
     command: fake.command,
   });
@@ -93,7 +88,7 @@ test("one failing Reviewer does not stop the others", async (t) => {
   t.after(fake.cleanup);
 
   const results = await runReviewers({
-    worktree: await worktree(t),
+    worktree: await tempDir(t),
     base: "main",
     command: fake.command,
   });
@@ -116,7 +111,7 @@ test("a schema violation names the Reviewer and the field", async (t) => {
   );
   t.after(fake.cleanup);
   const result = await runReviewer(REVIEWERS[2], {
-    worktree: await worktree(t),
+    worktree: await tempDir(t),
     base: "main",
     command: fake.command,
   });
@@ -136,7 +131,7 @@ test("a timeout, a usage limit and a missing claude are isolated per Reviewer", 
   );
   t.after(slow.cleanup);
   t.after(limited.cleanup);
-  const cwd = await worktree(t);
+  const cwd = await tempDir(t);
 
   const timeout = await runReviewer(REVIEWERS[0], {
     worktree: cwd,
@@ -168,7 +163,7 @@ test("allFailed is true only when there are Reviewers and all failed", async (t)
   const fake = await createFakeClaude(`process.exit(1);`);
   t.after(fake.cleanup);
   const results = await runReviewers({
-    worktree: await worktree(t),
+    worktree: await tempDir(t),
     base: "main",
     command: fake.command,
   });
@@ -185,7 +180,7 @@ test("disabled Reviewers are not run", async (t) => {
     enabled: r.name === "security" || r.name === "necessity",
   }));
   const results = await runReviewers({
-    worktree: await worktree(t),
+    worktree: await tempDir(t),
     base: "main",
     reviewers,
     command: fake.command,
@@ -202,7 +197,7 @@ test("Reviewers run in parallel, up to the concurrency", async (t) => {
     `await sleep(300); reply({ findings: [] });`,
   );
   t.after(fake.cleanup);
-  const cwd = await worktree(t);
+  const cwd = await tempDir(t);
 
   await runReviewers({
     worktree: cwd,
@@ -232,7 +227,7 @@ test("onResult is called once per Reviewer", async (t) => {
   t.after(fake.cleanup);
   const seen: string[] = [];
   await runReviewers({
-    worktree: await worktree(t),
+    worktree: await tempDir(t),
     base: "main",
     command: fake.command,
     onResult: (r) => seen.push(r.reviewer),
@@ -244,7 +239,7 @@ test("children get a scrubbed environment and read-only tools", async (t) => {
   const fake = await createFakeClaude(`reply({ findings: [] });`);
   t.after(fake.cleanup);
   await runReviewers({
-    worktree: await worktree(t),
+    worktree: await tempDir(t),
     base: "main",
     command: fake.command,
     env: {
@@ -278,7 +273,7 @@ test("children get a scrubbed environment and read-only tools", async (t) => {
 test("the prompt comes from the tool's own checkout, never from the worktree", async (t) => {
   const fake = await createFakeClaude(`reply({ findings: [] });`);
   t.after(fake.cleanup);
-  const cwd = await worktree(t);
+  const cwd = await tempDir(t);
   const own = path.join(cwd, "scripts/pr-review/prompts");
   await mkdir(own, { recursive: true });
   for (const reviewer of REVIEWERS) {
@@ -311,7 +306,7 @@ test("a missing prompt fails that Reviewer without starting claude", async (t) =
   t.after(fake.cleanup);
   const result = await runReviewer(
     { ...REVIEWERS[0], promptFile: "missing.md" },
-    { worktree: await worktree(t), base: "main", command: fake.command },
+    { worktree: await tempDir(t), base: "main", command: fake.command },
   );
   assert.equal(result.status === "failed" && result.reason, "process error");
   assert.match(
@@ -325,7 +320,7 @@ test("an unsafe base fails the Reviewer instead of reaching the prompt", async (
   const fake = await createFakeClaude(`reply({ findings: [] });`);
   t.after(fake.cleanup);
   const result = await runReviewer(REVIEWERS[0], {
-    worktree: await worktree(t),
+    worktree: await tempDir(t),
     base: "main; rm -rf /",
     command: fake.command,
   });

@@ -60,23 +60,40 @@ export const defaultExec: Exec = (file, args, options = {}) =>
         resolve(stdout);
         return;
       }
+      const how = signal
+        ? `was stopped by ${signal}`
+        : `exited with code ${code}`;
       const detail = stderr.trim().slice(-STDERR_LIMIT);
       reject(
         new Error(
-          `${file} ${args.slice(0, 2).join(" ")} ${signal ? `was stopped by ${signal}` : `exited with code ${code}`}${detail ? `: ${detail}` : ""}`,
+          `${file} ${args.slice(0, 2).join(" ")} ${how}${detail ? `: ${detail}` : ""}`,
         ),
       );
     });
   });
 
+/** @returns The message of a thrown value, whatever was thrown. */
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /** A failure that names the step of the Review run it happened in. */
 export class StepError extends Error {
   step: string;
   constructor(step: string, cause: unknown) {
-    super(
-      `${step} failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-      { cause },
-    );
+    super(`${step} failed: ${errorMessage(cause)}`, { cause });
     this.step = step;
+  }
+}
+
+/** Runs `fn`, wrapping whatever it throws in a {@link StepError} for `step`. */
+export async function inStep<T>(
+  step: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    throw new StepError(step, error);
   }
 }

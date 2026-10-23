@@ -18,7 +18,8 @@
 
 import { aggregate } from "./aggregate.ts";
 import { diffGitArgs } from "./diff.ts";
-import { StepError, type Exec } from "./exec.ts";
+import { inStep, type Exec } from "./exec.ts";
+import { plural } from "./markdown.ts";
 import {
   buildPlan,
   describePlan,
@@ -56,13 +57,6 @@ export function createReviewStep(
   deps: PipelineDeps,
 ): (prepared: PreparedReview) => Promise<void> {
   const { log } = deps;
-  const step = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
-    try {
-      return await fn();
-    } catch (error) {
-      throw new StepError(name, error);
-    }
-  };
 
   return async (prepared) => {
     const { pr, mergeBase, worktree, token } = prepared;
@@ -76,15 +70,15 @@ export function createReviewStep(
           : createFetchTransport({ token, fetch: deps.fetch }),
       );
 
-    const existing = await step("Read pull request", () =>
+    const existing = await inStep("Read pull request", () =>
       readExistingState(client, pr.number),
     );
     log(
-      `Already on the pull request: ${existing.fingerprints.size} Fingerprint${existing.fingerprints.size === 1 ? "" : "s"}${existing.previousVerdict ? `, last Verdict ${existing.previousVerdict}` : ""}.`,
+      `Already on the pull request: ${plural(existing.fingerprints.size, "Fingerprint", "Fingerprints")}${existing.previousVerdict ? `, last Verdict ${existing.previousVerdict}` : ""}.`,
     );
 
     log("Running the Reviewers...");
-    const results = await step("Reviewers", async () => {
+    const results = await inStep("Reviewers", async () => {
       const done = await runReviewers({
         worktree,
         base: mergeBase,
@@ -94,7 +88,7 @@ export function createReviewStep(
         onResult: (result) =>
           log(
             result.status === "ok"
-              ? `  Reviewer ${result.reviewer}: ${result.findings.length} Finding${result.findings.length === 1 ? "" : "s"}`
+              ? `  Reviewer ${result.reviewer}: ${plural(result.findings.length, "Finding", "Findings")}`
               : `  Reviewer ${result.reviewer}: did not run (${result.reason})`,
           ),
       });
@@ -109,12 +103,12 @@ export function createReviewStep(
       return done;
     });
 
-    const diff = await step("Read diff", () =>
+    const diff = await inStep("Read diff", () =>
       deps.git(diffGitArgs(mergeBase), worktree),
     );
 
     log("Aggregating...");
-    const aggregation = await step("Aggregation", () =>
+    const aggregation = await inStep("Aggregation", () =>
       aggregate({
         worktree,
         base: mergeBase,
@@ -130,7 +124,7 @@ export function createReviewStep(
       `Findings to post: ${aggregation.anchored.length} anchored, ${aggregation.unanchored.length} unanchored (${aggregation.dropped.alreadyPosted} already posted, ${aggregation.leftOut} over the cap). Verdict: ${aggregation.verdict}.`,
     );
 
-    const plan = await step("Plan", async () =>
+    const plan = await inStep("Plan", async () =>
       buildPlan({ headSha: pr.headSha, aggregation, existing }),
     );
     if (dryRun) {

@@ -1,55 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
 import { aggregate, type AggregateOptions } from "./aggregate.ts";
 import type { Finding } from "./finding.ts";
 import { extractFingerprints, fingerprint } from "./fingerprint.ts";
 import type { ReviewerResult } from "./reviewers.ts";
-import { createFakeClaude } from "./test-helpers.ts";
-
-type Cleanup = { after(fn: () => Promise<void>): void };
-
-async function worktree(t: Cleanup) {
-  const dir = await mkdtemp(path.join(tmpdir(), "worktree-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
-  return dir;
-}
-
-/** Right-side lines 1-6 of src/a.ts are in the diff; src/old.ts is deleted. */
-const DIFF = `diff --git a/src/a.ts b/src/a.ts
---- a/src/a.ts
-+++ b/src/a.ts
-@@ -1,4 +1,6 @@
- line1
--line2
-+line2 changed
-+line3 added
- line4
- line5
- line6
-diff --git a/src/old.ts b/src/old.ts
-deleted file mode 100644
---- a/src/old.ts
-+++ /dev/null
-@@ -1 +0,0 @@
--gone
-`;
-
-function finding(overrides: Partial<Finding> = {}): Finding {
-  return {
-    reviewer: "correctness",
-    severity: "major",
-    confidence: 0.8,
-    path: "src/a.ts",
-    line: 2,
-    title: "Wrong value",
-    body: "The value is wrong.",
-    fixPrompt: "In src/a.ts line 2, correct the value.",
-    ...overrides,
-  };
-}
+import {
+  SAMPLE_DIFF,
+  createFakeClaude,
+  sampleFinding as finding,
+  tempDir,
+} from "./test-helpers.ts";
 
 function ok(reviewer: string, findings: Finding[]): ReviewerResult {
   return {
@@ -79,7 +39,7 @@ const GOOD_ANSWER = {
 };
 
 async function run(
-  t: Cleanup,
+  t: TestContext,
   results: ReviewerResult[],
   answer: unknown,
   extra: Partial<AggregateOptions> = {},
@@ -91,9 +51,9 @@ async function run(
   );
   t.after(fake.cleanup);
   const result = await aggregate({
-    worktree: await worktree(t),
+    worktree: await tempDir(t),
     base: "main",
-    diff: DIFF,
+    diff: SAMPLE_DIFF,
     results,
     command: fake.command,
     ...extra,

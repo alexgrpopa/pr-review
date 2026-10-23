@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
-import { createRepoFixture } from "./test-helpers.ts";
+import { createRepoFixture, tempDir } from "./test-helpers.ts";
 import {
   checkSize,
   fetchPullRequest,
@@ -112,8 +111,8 @@ function fakeGit(failOn?: string) {
   return { git, calls };
 }
 
-test("the worktree is added, used and removed", async () => {
-  const tmpRoot = mkdtempSync(path.join(tmpdir(), "pr-review-test-"));
+test("the worktree is added, used and removed", async (t) => {
+  const tmpRoot = await tempDir(t, "pr-review-test-");
   const { git, calls } = fakeGit();
   let seen = "";
   await withWorktree(
@@ -130,11 +129,10 @@ test("the worktree is added, used and removed", async () => {
   assert.equal(calls[1][3], seen);
   assert.deepEqual(calls[2], ["worktree", "prune"]);
   assert.equal(existsSync(path.dirname(seen)), false);
-  rmSync(tmpRoot, { recursive: true, force: true });
 });
 
-test("the worktree is removed when the work in it fails", async () => {
-  const tmpRoot = mkdtempSync(path.join(tmpdir(), "pr-review-test-"));
+test("the worktree is removed when the work in it fails", async (t) => {
+  const tmpRoot = await tempDir(t, "pr-review-test-");
   const { git, calls } = fakeGit();
   let seen = "";
   await assert.rejects(
@@ -151,18 +149,16 @@ test("the worktree is removed when the work in it fails", async () => {
   );
   assert.ok(calls.some((args) => args[1] === "remove"));
   assert.equal(existsSync(path.dirname(seen)), false);
-  rmSync(tmpRoot, { recursive: true, force: true });
 });
 
-test("the folder is removed even when adding the worktree fails", async () => {
-  const tmpRoot = mkdtempSync(path.join(tmpdir(), "pr-review-test-"));
+test("the folder is removed even when adding the worktree fails", async (t) => {
+  const tmpRoot = await tempDir(t, "pr-review-test-");
   const { git } = fakeGit("worktree");
   await assert.rejects(
     withWorktree(git, "abc", async () => undefined, tmpRoot),
     /git worktree failed/,
   );
   assert.deepEqual(readdirSync(tmpRoot), [], "no leftover folder");
-  rmSync(tmpRoot, { recursive: true, force: true });
 });
 
 test("a head that moved since GitHub was read stops the fetch", async (t) => {

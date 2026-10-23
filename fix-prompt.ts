@@ -14,6 +14,7 @@
  */
 
 import type { Finding } from "./finding.ts";
+import { plural } from "./markdown.ts";
 
 type Located = Pick<
   Finding,
@@ -109,15 +110,13 @@ export function fixPromptFor(finding: Located, suggestion?: string): string {
  *   self-contained, so they are numbered and joined.
  */
 export function combineFixPrompts(
-  findings: readonly (Pick<Finding, "severity" | "title"> & {
-    path?: string;
-    line?: number;
-    endLine?: number;
-    fixPrompt: string;
-  })[],
+  findings: readonly Pick<
+    Finding,
+    "severity" | "title" | "path" | "line" | "endLine" | "fixPrompt"
+  >[],
 ): string | null {
   if (findings.length === 0) return null;
-  const count = findings.length === 1 ? "1 issue" : `${findings.length} issues`;
+  const count = plural(findings.length, "issue", "issues");
   const sections = findings.map(
     (f, i) =>
       `## ${i + 1}. [${f.severity}] ${f.title.trim()} (${locationOf(f)})\n\n${f.fixPrompt.trim()}`,

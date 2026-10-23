@@ -16,8 +16,9 @@ const JWT_LIFETIME_SECONDS = 9 * 60;
 /** Issued-at is backdated to absorb a clock that runs ahead of GitHub's. */
 const JWT_CLOCK_SKEW_SECONDS = 60;
 
-const base64url = (value: string | Buffer): string =>
-  Buffer.from(value).toString("base64url");
+function base64url(value: string | Buffer): string {
+  return Buffer.from(value).toString("base64url");
+}
 
 /**
  * Builds the App's RS256 JSON Web Token.

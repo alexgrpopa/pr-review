@@ -47,8 +47,15 @@ export interface RemoteComment {
   byBot: boolean;
 }
 
-export type ReviewState =
-  "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "DISMISSED" | "PENDING";
+const REVIEW_STATES = Object.freeze([
+  "APPROVED",
+  "CHANGES_REQUESTED",
+  "COMMENTED",
+  "DISMISSED",
+  "PENDING",
+] as const);
+
+export type ReviewState = (typeof REVIEW_STATES)[number];
 
 /** A review on the pull request, oldest first in a list. */
 export interface RemoteReview {
@@ -92,6 +99,19 @@ const PAGE_SIZE = 100;
 /** Most pages read of one list: a pull request has nowhere near this many. */
 const MAX_PAGES = 50;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** The text of one entry of an error answer's `errors`; empty when it has none. */
+function errorDetail(entry: unknown): string {
+  if (typeof entry === "string") return entry;
+  if (isRecord(entry) && typeof entry.message === "string") {
+    return entry.message;
+  }
+  return "";
+}
+
 export interface FetchTransportOptions {
   token: string;
   fetch?: typeof fetch;
@@ -125,13 +145,7 @@ export function createFetchTransport({
         };
         if (typeof answer.message === "string") message = answer.message;
         if (Array.isArray(answer.errors) && answer.errors.length > 0) {
-          const first = answer.errors[0];
-          const detail =
-            typeof first === "string"
-              ? first
-              : typeof (first as { message?: unknown })?.message === "string"
-                ? (first as { message: string }).message
-                : "";
+          const detail = errorDetail(answer.errors[0]);
           if (detail) message = message ? `${message} (${detail})` : detail;
         }
       } catch {
@@ -162,12 +176,17 @@ export function createGhTransport(exec: Exec, cwd?: string): Transport {
   };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function unexpected(what: string): Error {
   return new Error(`Unexpected ${what} response from GitHub`);
+}
+
+/** Whether `raw` is an object with a safe integer `id`. */
+function hasId(raw: unknown): raw is Record<string, unknown> & { id: number } {
+  return isRecord(raw) && Number.isSafeInteger(raw.id);
+}
+
+function isReviewState(value: unknown): value is ReviewState {
+  return REVIEW_STATES.includes(value as ReviewState);
 }
 
 function byBot(raw: Record<string, unknown>): boolean {
@@ -175,43 +194,22 @@ function byBot(raw: Record<string, unknown>): boolean {
 }
 
 function toComment(raw: unknown): RemoteComment {
-  if (!isRecord(raw) || !Number.isSafeInteger(raw.id)) {
-    throw unexpected("comment");
-  }
+  if (!hasId(raw)) throw unexpected("comment");
   return {
-    id: raw.id as number,
+    id: raw.id,
     body: typeof raw.body === "string" ? raw.body : "",
     byBot: byBot(raw),
   };
 }
 
-const REVIEW_STATES: readonly string[] = [
-  "APPROVED",
-  "CHANGES_REQUESTED",
-  "COMMENTED",
-  "DISMISSED",
-  "PENDING",
-];
-
 function toReview(raw: unknown): RemoteReview {
-  if (
-    !isRecord(raw) ||
-    !Number.isSafeInteger(raw.id) ||
-    typeof raw.state !== "string" ||
-    !REVIEW_STATES.includes(raw.state)
-  ) {
-    throw unexpected("review");
-  }
-  return {
-    id: raw.id as number,
-    state: raw.state as ReviewState,
-    byBot: byBot(raw),
-  };
+  if (!hasId(raw) || !isReviewState(raw.state)) throw unexpected("review");
+  return { id: raw.id, state: raw.state, byBot: byBot(raw) };
 }
 
 function idOf(raw: unknown, what: string): number {
-  if (!isRecord(raw) || !Number.isSafeInteger(raw.id)) throw unexpected(what);
-  return raw.id as number;
+  if (!hasId(raw)) throw unexpected(what);
+  return raw.id;
 }
 
 /**
