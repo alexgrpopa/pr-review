@@ -12,7 +12,7 @@ import { parseEnv } from "node:util";
 export const APP_ID_VARIABLE = "PR_REVIEW_APP_ID";
 export const PRIVATE_KEY_VARIABLE = "PR_REVIEW_APP_PRIVATE_KEY";
 
-const SETUP_HINT = "see scripts/pr-review/README.md";
+const SETUP_HINT = "see the README of @alexgrpopa/pr-review";
 
 export interface Credentials {
   /** The GitHub App's ID. */

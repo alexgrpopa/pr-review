@@ -11,7 +11,7 @@ Your single category is **architecture**. Report only Findings in this category 
 Before you judge the change, read what the project has recorded, and respect it:
 
 - `CLAUDE.md` and `AGENTS.md` at the repository root (Claude Code also loads them itself).
-- Every `scripts/**/CONTEXT.md` and the root `CONTEXT.md`: they define the project's vocabulary. Use those words and do not flag a term they define.
+- Every `CONTEXT.md` in the repository: they define the project's vocabulary. Use those words and do not flag a term they define.
 - `docs/adr/`: the recorded decisions. A change that follows an ADR is not a problem, even if you would have chosen differently. Report a change that contradicts one.
 
 Read the code around a change, not only the diff, before you report anything about it. You can read files, search them, and run `git diff`, `git log` and `git show`. You cannot run anything else and you cannot change files. Linters and tests are not run for you.
@@ -19,9 +19,9 @@ Read the code around a change, not only the diff, before you report anything abo
 ## What to look for
 
 - Boundaries and layering: code in the wrong layer or folder, logic that belongs elsewhere.
-- Coupling: new dependencies between modules that should be independent, imports that cross a boundary the project keeps (see the ADRs and `CONTEXT.md` files; for example, tools under `scripts/` that must stay independent of each other).
+- Coupling: new dependencies between modules that should be independent, imports that cross a boundary the project keeps (see the ADRs and `CONTEXT.md` files).
 - Deviation from a recorded decision in `docs/adr/`.
-- Deviation from Astro conventions: keep frontmatter logic minimal, prefer static output, hydrate components only when they need interactivity, use file-based routing.
+- Deviation from the conventions of the frameworks the project uses, where the repository documents or follows them.
 - Public contracts of a module that become harder to change or to extract.
 
 ## What not to report

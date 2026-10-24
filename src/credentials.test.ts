@@ -56,19 +56,19 @@ test("a missing variable is named, with a pointer to the README", (t) => {
   const noId = envFile(t, envFileText().split("\n")[1] + "\n");
   assert.throws(
     () => readCredentials([noId]),
-    /PR_REVIEW_APP_ID is not set.*scripts\/pr-review\/README\.md/,
+    /PR_REVIEW_APP_ID is not set.*README of @alexgrpopa\/pr-review/,
   );
   const noKey = envFile(t, "PR_REVIEW_APP_ID=1\nPR_REVIEW_APP_PRIVATE_KEY=\n");
   assert.throws(
     () => readCredentials([noKey]),
-    /PR_REVIEW_APP_PRIVATE_KEY is not set.*scripts\/pr-review\/README\.md/,
+    /PR_REVIEW_APP_PRIVATE_KEY is not set.*README of @alexgrpopa\/pr-review/,
   );
 });
 
 test("a missing file names both variables and the README", () => {
   assert.throws(
     () => readCredentials(["/nonexistent/.env.local"]),
-    /PR_REVIEW_APP_ID and PR_REVIEW_APP_PRIVATE_KEY.*README\.md/,
+    /PR_REVIEW_APP_ID and PR_REVIEW_APP_PRIVATE_KEY.*README of @alexgrpopa\/pr-review/,
   );
 });
 

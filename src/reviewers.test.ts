@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { mkdir, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { test } from "node:test";
-import { PATH_FILTERS, REVIEWERS, type ReviewerConfig } from "./config.ts";
+import {
+  PATH_FILTERS,
+  REVIEWERS,
+  type PathInstruction,
+  type ReviewerConfig,
+} from "./config.ts";
 import {
   PROMPTS_DIR,
   allFailed,
@@ -274,7 +279,7 @@ test("the prompt comes from the tool's own checkout, never from the worktree", a
   const fake = await createFakeClaude(`reply({ findings: [] });`);
   t.after(fake.cleanup);
   const cwd = await tempDir(t);
-  const own = path.join(cwd, "scripts/pr-review/prompts");
+  const own = path.join(cwd, "prompts");
   await mkdir(own, { recursive: true });
   for (const reviewer of REVIEWERS) {
     await writeFile(
@@ -296,7 +301,7 @@ test("the prompt comes from the tool's own checkout, never from the worktree", a
 test("loadPrompt reads this checkout's prompts and refuses paths", async () => {
   const text = await loadPrompt("security.md");
   assert.match(text, /^# Security Reviewer/);
-  assert.equal(PROMPTS_DIR, path.resolve(import.meta.dirname, "prompts"));
+  assert.equal(PROMPTS_DIR, path.resolve(import.meta.dirname, "..", "prompts"));
   assert.throws(() => loadPrompt("../config.ts"), /plain file name/);
   assert.throws(() => loadPrompt("/etc/passwd"), /plain file name/);
 });
@@ -330,25 +335,45 @@ test("an unsafe base fails the Reviewer instead of reaching the prompt", async (
 
 test("the task names the base, skips the filtered paths and hands over the path instructions", () => {
   const byName = (name: string) => REVIEWERS.find((r) => r.name === name)!;
+  const pathInstructions: PathInstruction[] = [
+    {
+      path: "src/**/*.tsx",
+      reviewers: ["correctness"],
+      instructions: "Check accessibility.",
+    },
+    {
+      path: "src/**/*.css",
+      reviewers: ["coding-standards"],
+      instructions: "Prefer logical properties.",
+    },
+  ];
 
-  const correctness = buildTask(byName("correctness"), "abc123");
+  const correctness = buildTask(
+    byName("correctness"),
+    "abc123",
+    pathInstructions,
+  );
   assert.match(correctness, /as the correctness Reviewer/);
   assert.match(correctness, /git diff abc123\.\.\.HEAD -- \./);
   for (const filter of PATH_FILTERS) {
     assert.ok(correctness.includes(`':(exclude)${filter}'`), filter);
   }
   assert.match(correctness, /severity critical, major, minor\./);
-  assert.match(correctness, /`src\/\*\*\/\*\.astro`: Check accessibility/);
-  assert.match(
-    correctness,
-    /`src\/pages\/\*\*`: Verify every page sets a title/,
-  );
-  assert.doesNotMatch(correctness, /stylelint/);
+  assert.match(correctness, /`src\/\*\*\/\*\.tsx`: Check accessibility/);
+  assert.doesNotMatch(correctness, /logical properties/);
 
-  const standards = buildTask(byName("coding-standards"), "abc123");
-  assert.match(standards, /stylelint-config-standard/);
+  const standards = buildTask(
+    byName("coding-standards"),
+    "abc123",
+    pathInstructions,
+  );
+  assert.match(standards, /logical properties/);
   assert.doesNotMatch(standards, /accessibility/);
 
-  const security = buildTask(byName("security"), "abc123");
+  const security = buildTask(byName("security"), "abc123", pathInstructions);
   assert.doesNotMatch(security, /Path instructions/);
+});
+
+test("without path instructions the task has no such section", () => {
+  assert.doesNotMatch(buildTask(REVIEWERS[0]!, "abc123"), /Path instructions/);
 });

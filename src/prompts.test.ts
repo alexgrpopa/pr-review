@@ -24,7 +24,7 @@ for (const reviewer of REVIEWERS) {
     for (const source of [
       "CLAUDE.md",
       "AGENTS.md",
-      "scripts/**/CONTEXT.md",
+
       "CONTEXT.md",
       "docs/adr/",
     ]) {

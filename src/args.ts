@@ -1,5 +1,5 @@
 /**
- * Command line of `pnpm pr-review`.
+ * Command line of `pr-review`.
  */
 
 import { parseArgs } from "node:util";
@@ -10,7 +10,7 @@ import { errorMessage } from "./exec.ts";
 export const DEFAULT_MAX_LINES = MAX_DIFF_LINES;
 
 export const USAGE =
-  "Usage: pnpm pr-review [--pr <number>] [--max-lines <number>] [--dry-run]";
+  "Usage: pr-review [--pr <number>] [--max-lines <number>] [--dry-run]";
 
 export interface Args {
   /** The pull request to review; undefined means the current branch's. */

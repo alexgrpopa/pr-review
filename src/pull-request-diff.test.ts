@@ -19,16 +19,16 @@ const numstat = (...records: string[][]) =>
 test("the path filters ignore generated and vendored paths", () => {
   for (const ignored of [
     "dist/index.html",
-    ".astro/types.d.ts",
+    "build/index.js",
     "node_modules/x/index.js",
-    "public/logo.svg",
+    "coverage/lcov.info",
     "pnpm-lock.yaml",
   ]) {
     assert.equal(isIgnored(ignored), true, ignored);
   }
   for (const kept of [
     "src/pages/dist.astro",
-    "src/public/x.ts",
+    "src/build/x.ts",
     "package.json",
     "docs/pnpm-lock.yaml",
     "distillery.ts",

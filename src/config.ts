@@ -1,7 +1,7 @@
 /**
  * Shared configuration for the PR review tool: the Reviewers, the path filters
- * and instructions, the Threshold and the limits. Everything specific to this
- * repository lives here and in `prompts/`, so the tool stays extractable.
+ * and instructions, the Threshold and the limits. The defaults are generic:
+ * nothing here is specific to one repository.
  */
 
 import { SEVERITIES, type Severity } from "./finding.ts";
@@ -42,15 +42,18 @@ export const REVIEWERS: readonly ReviewerConfig[] = Object.freeze(
 );
 
 /**
- * Paths no Reviewer looks at: build output, dependencies, static assets and
- * the lockfile. Directories end in a slash. Used as pathspec exclusions.
+ * Paths no Reviewer looks at: build output, dependencies and lockfiles.
+ * Directories end in a slash. Used as pathspec exclusions.
  */
 export const PATH_FILTERS: readonly string[] = Object.freeze([
   "dist/",
-  ".astro/",
+  "build/",
+  "coverage/",
   "node_modules/",
-  "public/",
   "pnpm-lock.yaml",
+  "package-lock.json",
+  "yarn.lock",
+  "bun.lock",
 ]);
 
 export interface PathInstruction {
@@ -61,37 +64,8 @@ export interface PathInstruction {
   instructions: string;
 }
 
-export const PATH_INSTRUCTIONS: readonly PathInstruction[] = Object.freeze([
-  {
-    path: "src/**/*.astro",
-    reviewers: ["architecture", "coding-standards"],
-    instructions:
-      "Follow Astro conventions: keep frontmatter logic minimal, prefer static output, and only hydrate components that need interactivity.",
-  },
-  {
-    path: "src/**/*.astro",
-    reviewers: ["correctness"],
-    instructions:
-      "Check accessibility: semantic HTML, alt text, labels and focus states.",
-  },
-  {
-    path: "src/**/*.{css,astro}",
-    reviewers: ["coding-standards"],
-    instructions:
-      "Styles are linted with stylelint-config-standard. Prefer logical properties over physical ones and avoid CSS features unsupported by the browserslist in package.json.",
-  },
-  {
-    path: "src/pages/**",
-    reviewers: ["architecture"],
-    instructions: "Verify routing follows Astro file-based conventions.",
-  },
-  {
-    path: "src/pages/**",
-    reviewers: ["correctness"],
-    instructions:
-      "Verify every page sets a title and a meta description through the shared layout.",
-  },
-]);
+/** Extra instructions for files matching a glob. None by default. */
+export const PATH_INSTRUCTIONS: readonly PathInstruction[] = Object.freeze([]);
 
 /** Lowest Severity that is posted ("chill": minor and above). */
 export const THRESHOLD: Severity = "minor";

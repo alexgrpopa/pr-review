@@ -169,7 +169,7 @@ export function createRepoFixture(): RepoFixture {
   write("README.md", "# Fixture\nchanged\n");
   write("pnpm-lock.yaml", lines(500));
   write("dist/out.js", lines(500));
-  write("public/logo.txt", lines(500));
+  write("build/logo.txt", lines(500));
   run(work, "add", ".");
   run(work, "commit", "-m", "feature");
   const headSha = run(work, "rev-parse", "HEAD").trim();

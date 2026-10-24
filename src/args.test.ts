@@ -29,7 +29,7 @@ test("a bad number is rejected, naming the option and the usage", () => {
   for (const value of ["abc", "0", "1.5", "", "1e3"]) {
     assert.throws(
       () => parseCliArgs(["--pr", value]),
-      /--pr needs a positive whole number[\s\S]*Usage: pnpm pr-review/,
+      /--pr needs a positive whole number[\s\S]*Usage: pr-review/,
       `--pr ${value}`,
     );
     assert.throws(
@@ -49,7 +49,7 @@ test("a negative number is rejected", () => {
 });
 
 test("an unknown option or a stray argument is rejected with the usage", () => {
-  assert.throws(() => parseCliArgs(["--post"]), /Usage: pnpm pr-review/);
-  assert.throws(() => parseCliArgs(["33"]), /Usage: pnpm pr-review/);
-  assert.throws(() => parseCliArgs(["--pr"]), /Usage: pnpm pr-review/);
+  assert.throws(() => parseCliArgs(["--post"]), /Usage: pr-review/);
+  assert.throws(() => parseCliArgs(["33"]), /Usage: pr-review/);
+  assert.throws(() => parseCliArgs(["--pr"]), /Usage: pr-review/);
 });

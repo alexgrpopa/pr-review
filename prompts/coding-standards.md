@@ -11,7 +11,7 @@ Your single category is **coding standards**. Report only Findings in this categ
 Before you judge the change, read what the project has recorded, and respect it:
 
 - `CLAUDE.md` and `AGENTS.md` at the repository root (Claude Code also loads them itself).
-- Every `scripts/**/CONTEXT.md` and the root `CONTEXT.md`: they define the project's vocabulary. Use those words and do not flag a term they define.
+- Every `CONTEXT.md` in the repository: they define the project's vocabulary. Use those words and do not flag a term they define.
 - `docs/adr/`: the recorded decisions. A change that follows an ADR is not a problem, even if you would have chosen differently. Report a change that contradicts one.
 
 Read the code around a change, not only the diff, before you report anything about it. You can read files, search them, and run `git diff`, `git log` and `git show`. You cannot run anything else and you cannot change files. Linters and tests are not run for you.
@@ -20,7 +20,7 @@ Read the code around a change, not only the diff, before you report anything abo
 
 - The standards written in `CLAUDE.md`, `AGENTS.md` and the path instructions you were given.
 - ESLint, Stylelint and Prettier conventions, and the conventions of the code around the change: naming, file layout, header comments, comment density, test file placement (`*.test.ts` next to the code).
-- Style rules for `.astro`, CSS and TypeScript in this repository, for example logical properties in CSS and CSS the project's `browserslist` supports.
+- The style rules the repository documents or configures for the languages the change touches.
 - Consistency with the surrounding code where no tool decides it.
 
 The linters are not run for you. Do not report what a linter will certainly catch (unused variables, formatting); judge what linters cannot: whether the change fits the repository's own conventions.

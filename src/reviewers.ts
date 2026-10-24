@@ -16,6 +16,7 @@ import {
   CONCURRENCY,
   PATH_FILTERS,
   PATH_INSTRUCTIONS,
+  type PathInstruction,
   REVIEWERS,
   REVIEWER_TIMEOUT_MS,
   SEVERITIES_FROM_THRESHOLD,
@@ -28,9 +29,10 @@ import {
   type Finding,
 } from "./finding.ts";
 
-/** Folder of the Reviewers' prompts, next to this file. */
+/** Folder of the Reviewers' prompts, at the root of the package. */
 export const PROMPTS_DIR = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
+  "..",
   "prompts",
 );
 
@@ -113,9 +115,13 @@ export function diffCommand(base: string): string {
  * @returns What a Reviewer is asked to do this run: where the change is, what
  *   to skip and the path instructions that concern it.
  */
-export function buildTask(reviewer: ReviewerConfig, base: string): string {
+export function buildTask(
+  reviewer: ReviewerConfig,
+  base: string,
+  pathInstructions: readonly PathInstruction[] = PATH_INSTRUCTIONS,
+): string {
   const command = diffCommand(base);
-  const instructions = PATH_INSTRUCTIONS.filter((i) =>
+  const instructions = pathInstructions.filter((i) =>
     i.reviewers.includes(reviewer.name),
   );
   return [

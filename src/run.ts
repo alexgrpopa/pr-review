@@ -1,12 +1,12 @@
 /**
- * Review runner: `pnpm pr-review`, a Review run for a pull request, on the
+ * Review runner: `pr-review`, a Review run for a pull request, on the
  * developer's machine. It prepares the change (pull request, merge-base,
  * worktree of the head SHA, diff, size check, token) and hands it to the
  * review step (pipeline.ts): Reviewers, aggregation and posting.
  *
  * CLI:
  *
- *   node scripts/pr-review/run.ts [--pr <number>] [--max-lines <number>] [--dry-run]
+ *   pr-review [--pr <number>] [--max-lines <number>] [--dry-run]
  *
  *   - The pull request is the open one of the current branch (looked up with
  *     `gh`, as the developer), or `--pr <number>`. Its base branch and head
@@ -40,7 +40,6 @@
  */
 
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { parseCliArgs, USAGE } from "./args.ts";
 import { readCredentials, secretsOf, type Credentials } from "./credentials.ts";
 import {
@@ -243,8 +242,9 @@ async function credentialFiles(git: Git): Promise<string[]> {
   ];
 }
 
-async function main() {
-  const args = parseCliArgs(process.argv.slice(2));
+/** Runs the command line: parses `argv` and does a Review run. */
+export async function main(argv: string[]): Promise<void> {
+  const args = parseCliArgs(argv);
   if (args.help) {
     console.log(USAGE);
     return;
@@ -284,10 +284,4 @@ export function reportFailure(
 ): number {
   print(errorMessage(error));
   return 1;
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main().catch((error) => {
-    process.exitCode = reportFailure(error);
-  });
 }

@@ -11,7 +11,7 @@ Your single category is **necessity (is the code actually needed)**. Report only
 Before you judge the change, read what the project has recorded, and respect it:
 
 - `CLAUDE.md` and `AGENTS.md` at the repository root (Claude Code also loads them itself).
-- Every `scripts/**/CONTEXT.md` and the root `CONTEXT.md`: they define the project's vocabulary. Use those words and do not flag a term they define.
+- Every `CONTEXT.md` in the repository: they define the project's vocabulary. Use those words and do not flag a term they define.
 - `docs/adr/`: the recorded decisions. A change that follows an ADR is not a problem, even if you would have chosen differently. Report a change that contradicts one.
 
 Read the code around a change, not only the diff, before you report anything about it. You can read files, search them, and run `git diff`, `git log` and `git show`. You cannot run anything else and you cannot change files. Linters and tests are not run for you.
@@ -21,7 +21,7 @@ Read the code around a change, not only the diff, before you report anything abo
 - Dead code: unused exports, parameters, branches, files, options and configuration.
 - Duplication: the same logic written twice in the change or already present in the repository.
 - Speculative abstraction: layers, options, hooks and generality for needs that do not exist yet.
-- Something the platform, Node, Astro or an existing dependency already does, so the new code or the new dependency is not needed.
+- Something the platform, the runtime, the framework or an existing dependency already does, so the new code or the new dependency is not needed.
 - Dependencies that could go, or that the change adds for little use.
 - Comments or documentation that only repeat the code.
 

@@ -2,20 +2,30 @@
 
 Reviews a pull request locally with Claude Code. The vocabulary (Review run, Review bot, Summary block and so on) is defined in [CONTEXT.md](CONTEXT.md).
 
-## Usage
+## Install
 
 ```sh
-pnpm pr-review                  # review the open pull request of the current branch
-pnpm pr-review --pr 41          # review pull request 41
-pnpm pr-review --dry-run        # review, print what would be posted, write nothing
-pnpm pr-review --max-lines 6000 # accept a bigger change
+pnpm add -D @alexgrpopa/pr-review   # or: npm i -D @alexgrpopa/pr-review
 ```
 
-| Option            | Meaning                                                                                                                                                             |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--pr <number>`   | The pull request to review. Default: the open pull request of the current branch, found with your own `gh` login.                                                   |
-| `--dry-run`       | Runs the Reviewers and the aggregation and prints everything that would be posted. Makes no write, mints no token and needs no credentials.                         |
-| `--max-lines <n>` | Raises the size limit (default 3000 changed lines, added plus deleted, after the path filters in `config.ts`). A bigger change stops the run; it is never cut down. |
+Or run it without installing: `npx @alexgrpopa/pr-review`. It needs Node 22.18 or later.
+
+## Usage
+
+Run it from a checkout of the repository whose pull request you want reviewed.
+
+```sh
+pr-review                  # review the open pull request of the current branch
+pr-review --pr 41          # review pull request 41
+pr-review --dry-run        # review, print what would be posted, write nothing
+pr-review --max-lines 6000 # accept a bigger change
+```
+
+| Option            | Meaning                                                                                                                                                                                        |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--pr <number>`   | The pull request to review. Default: the open pull request of the current branch, found with your own `gh` login.                                                                              |
+| `--dry-run`       | Runs the Reviewers and the aggregation and prints everything that would be posted. Makes no write, mints no token and needs no credentials.                                                    |
+| `--max-lines <n>` | Raises the size limit (default 3000 changed lines, added plus deleted, after the path filters: build output, dependencies and lockfiles). A bigger change stops the run; it is never cut down. |
 
 The pushed head of the pull request is reviewed, never the working tree. A run needs `claude` (logged in), `gh` (logged in) and `git`.
 
@@ -43,7 +53,7 @@ One run is **six Claude invocations**: the five Reviewers (in parallel) and the 
 
 ## The Review bot
 
-Every write of a Review run (the Summary block, the Findings comment and the Inline review) is made by a private GitHub App owned by the developer, so that the Inline review can carry a Verdict on the developer's own pull request. See [ADR 0003](../../docs/adr/0003-review-pull-requests-locally-as-a-github-app.md) for why. The developer's own `gh` login is only used to find the pull request.
+Every write of a Review run (the Summary block, the Findings comment and the Inline review) is made by a private GitHub App owned by the developer, so that the Inline review can carry a Verdict on the developer's own pull request. See [ADR 0001](docs/adr/0001-review-pull-requests-locally-as-a-github-app.md) for why. The developer's own `gh` login is only used to find the pull request.
 
 ### App settings
 
@@ -58,11 +68,11 @@ Every write of a Review run (the Summary block, the Findings comment and the Inl
   | Issues        | Read and write |
   | Metadata      | Read           |
 
-- **Installation**: `alexgrpopa/alexpopa.dev` only, with "Only select repositories". Never "All repositories".
+- **Installation**: only the repositories you review, with "Only select repositories". Never "All repositories".
 
 ### Credentials
 
-Two variables identify the Review bot. They live only in `.env.local` at the repository root, which is gitignored. Never commit them, and never put a real value in this repository.
+Two variables identify the Review bot. They live only in `.env.local` at the repository root, which is gitignored. Never commit them.
 
 ```sh
 # .env.local
@@ -79,7 +89,7 @@ To turn a downloaded `.pem` into that one line:
 awk 'NF {printf "%s\\n", $0}' path/to/key.pem
 ```
 
-The installation ID is not stored. The Review run looks it up with `GET /repos/alexgrpopa/alexpopa.dev/installation` and mints a short-lived installation token on every run.
+The installation ID is not stored. The Review run looks it up with `GET /repos/<owner>/<repo>/installation` for the pull request's repository and mints a short-lived installation token on every run.
 
 ### Rotate the key
 

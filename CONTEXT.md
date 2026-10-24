@@ -1,12 +1,12 @@
 # PR Review
 
-Reviews a pull request locally with Claude Code, on the developer's own subscription. Several Reviewers each examine the change in their own category, and their Findings are posted back to the pull request as a summary and an inline review. It is independent of the PR Visual Diff and shares no vocabulary or code with it.
+Reviews a pull request locally with Claude Code, on the developer's own subscription. Several Reviewers each examine the change in their own category, and their Findings are posted back to the pull request as a summary and an inline review.
 
 ## Language
 
 **Review run**:
 One execution of the PR review on the developer's machine, started manually for a pull request. It runs every Reviewer, aggregates their Findings and posts the result. Running it again on the same pull request reviews the whole change again.
-_Avoid_: CI run, workflow run, Local run (that is the PR Visual Diff's term), job
+_Avoid_: CI run, workflow run, job
 
 **Reviewer**:
 An agent responsible for one category of concern across the whole pull request, and for nothing else. The categories are architecture, coding standards, security, necessity ("is the code actually needed") and correctness.

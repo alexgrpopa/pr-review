@@ -130,7 +130,7 @@ export function createFetchTransport({
         Accept: "application/vnd.github+json",
         Authorization: `Bearer ${token}`,
         "X-GitHub-Api-Version": API_VERSION,
-        "User-Agent": "alexpopadev-pr-review",
+        "User-Agent": "alexgrpopa-pr-review",
         ...(body === undefined ? {} : { "Content-Type": "application/json" }),
       },
       body: body === undefined ? undefined : JSON.stringify(body),

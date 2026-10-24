@@ -97,7 +97,7 @@ test("a dry run prints the pull request, base, head SHA and filtered diff", asyn
   );
   assert.match(text, /src\/feature\.ts {2}\+10 -0/);
   assert.match(text, /README\.md {2}\+1 -0/);
-  assert.doesNotMatch(text, /pnpm-lock|dist\/|public\/|uncommitted|main-only/);
+  assert.doesNotMatch(text, /pnpm-lock|dist\/|build\/|uncommitted|main-only/);
   assert.match(text, /Dry run: nothing was posted/);
 
   // A dry run reads no credentials and never calls the App endpoints.
@@ -195,7 +195,7 @@ test("missing credentials stop a real run before any network write, naming the v
       error.message,
       /^Credentials failed: PR_REVIEW_APP_PRIVATE_KEY is not set/,
     );
-    assert.match(error.message, /scripts\/pr-review\/README\.md/);
+    assert.match(error.message, /README of @alexgrpopa\/pr-review/);
     return true;
   });
   assert.deepEqual(fake.calls, ['lookupPullRequest {"branch":"feature"}']);

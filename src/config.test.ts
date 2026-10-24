@@ -10,7 +10,6 @@ import {
   PATH_FILTERS,
   PATH_INSTRUCTIONS,
   REVIEWERS,
-  REVIEWER_NAMES,
   REVIEWER_TIMEOUT_MS,
   SEVERITIES_FROM_THRESHOLD,
   THRESHOLD,
@@ -43,51 +42,24 @@ test("every Reviewer has a prompt file in prompts/", async () => {
   }
 });
 
-test("path filters ignore build output, dependencies, assets and the lockfile", () => {
+test("path filters ignore build output, dependencies and lockfiles", () => {
   assert.deepEqual(
     [...PATH_FILTERS],
-    ["dist/", ".astro/", "node_modules/", "public/", "pnpm-lock.yaml"],
+    [
+      "dist/",
+      "build/",
+      "coverage/",
+      "node_modules/",
+      "pnpm-lock.yaml",
+      "package-lock.json",
+      "yarn.lock",
+      "bun.lock",
+    ],
   );
 });
 
-test("the ported path instructions are all handed to known Reviewers", () => {
-  const paths = new Set(PATH_INSTRUCTIONS.map((i) => i.path));
-  assert.deepEqual(
-    [...paths].sort(),
-    ["src/**/*.astro", "src/**/*.{css,astro}", "src/pages/**"].sort(),
-  );
-  for (const instruction of PATH_INSTRUCTIONS) {
-    assert.ok(instruction.instructions.length > 0);
-    assert.ok(instruction.reviewers.length > 0);
-    for (const name of instruction.reviewers) {
-      assert.ok(REVIEWER_NAMES.includes(name), name);
-    }
-  }
-});
-
-test("path instructions keep the content of .coderabbit.yaml", () => {
-  const text = PATH_INSTRUCTIONS.map((i) => i.instructions).join(" ");
-  for (const phrase of [
-    "frontmatter logic minimal",
-    "hydrate components that need interactivity",
-    "accessibility",
-    "stylelint-config-standard",
-    "logical properties",
-    "browserslist in package.json",
-    "file-based",
-    "title and a meta description",
-  ]) {
-    assert.ok(text.includes(phrase), `missing: ${phrase}`);
-  }
-});
-
-test("accessibility goes to correctness, styles to coding standards", () => {
-  const handedTo = (needle: string) =>
-    PATH_INSTRUCTIONS.filter((i) => i.instructions.includes(needle)).flatMap(
-      (i) => i.reviewers,
-    );
-  assert.deepEqual(handedTo("accessibility"), ["correctness"]);
-  assert.deepEqual(handedTo("stylelint-config-standard"), ["coding-standards"]);
+test("there are no path instructions by default", () => {
+  assert.deepEqual([...PATH_INSTRUCTIONS], []);
 });
 
 test("the Threshold is minor, so minor and above are posted", () => {

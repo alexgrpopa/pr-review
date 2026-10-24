@@ -129,7 +129,7 @@ export function createGitHubClient({
         Accept: "application/vnd.github+json",
         Authorization: `Bearer ${jwt}`,
         "X-GitHub-Api-Version": API_VERSION,
-        "User-Agent": "alexpopadev-pr-review",
+        "User-Agent": "alexgrpopa-pr-review",
       },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
